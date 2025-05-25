@@ -1,0 +1,159 @@
+.app-container { /* UPDATED: Changed from .App to .app-container to match App.js */
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #1a1a1a; /* Dark background for the app */
+  color: #e0e0e0; /* Light text color */
+  overflow: hidden; /* Prevent body scroll when panel is open */
+  width: 100%; /* ADDED: Ensure app container takes full width */
+}
+
+.orb-container { /* UPDATED: Renamed .orb-background to .orb-container to match App.js */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0; /* Behind all other content */
+  pointer-events: none; /* Allow clicks to pass through */
+}
+
+.chat-container { /* UPDATED: Changed from .content-layer to .chat-container to match App.js */
+  position: relative;
+  z-index: 1; /* Above the orb background */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20px; /* Consistent padding on all sides */
+  box-sizing: border-box;
+  width: 100%; /* ADDED: Ensure chat container takes full width */
+}
+
+.App-header {
+  background-color: transparent; /* Header background */
+  /* padding: 15px 20px; */ /* REMOVED - padding is on chat-container now */
+  padding: 15px 0; /* Vertical padding only, horizontal comes from chat-container */
+  color: white;
+  display: flex;
+  justify-content: flex-start; /* Align items to the start (left) */
+  align-items: center;
+  border-bottom: 1px solid #333;
+  position: relative; /* Needed for absolute positioning of chat history toggle if it were here */
+  height: 60px; /* Fixed height for the header */
+}
+
+/* New Chat button specific to the header */
+.new-chat-header-button {
+  background-color: #4a00e0; /* Purple accent */
+  color: white;
+  border: none;
+  padding: 10px 20px; /* Slightly larger padding */
+  border-radius: 8px; /* Slightly more rounded */
+  cursor: pointer;
+  font-size: 0.95em;
+  font-weight: 500; /* Bolder text */
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  margin-right: 20px; /* Space between button and title */
+  /* Removed margin-left: auto; to keep it on the left */
+}
+
+.new-chat-header-button:hover {
+  background-color: #5e16ff; /* Lighter purple on hover */
+  transform: translateY(-1px); /* Slight lift on hover */
+}
+
+.new-chat-header-button:disabled {
+  background-color: #555;
+  color: #999;
+  cursor: not-allowed;
+  transform: translateY(0);
+}
+
+/* UPDATED: Renamed .main-content to .messages-container to match App.js */
+.messages-container {
+  flex-grow: 1;
+  overflow-y: auto; /* Allows scrolling of messages */
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%; /* Ensure it takes full width available in chat-container */
+  max-width: 1280px; /* Max width for readability */
+  margin: 0 auto; /* Center the container */
+  box-sizing: border-box;
+}
+
+/* Chat History Panel Toggle Button */
+.chat-history-toggle {
+  position: fixed; /* Fixed position relative to viewport */
+  top: 15px;      /* Align with header padding */
+  right: 20px;     /* Position on the right */
+  background: none;
+  border: none;
+  color: #a0a0a0;
+  font-size: 1.8em; /* Adjust size as needed */
+  cursor: pointer;
+  padding: 8px;
+  transition: color 0.3s ease, right 0.3s ease-in-out; /* ADDED: right transition */
+  z-index: 1001; /* Ensure it's above chat history panel if panel is also fixed */
+}
+
+.chat-history-toggle:hover {
+  color: #c0c0c0;
+}
+
+/* ADDED: Style for when panel is open */
+.chat-history-toggle.panel-is-open {
+  right: 320px; /* Width of panel (300px) + desired offset (20px) */
+}
+
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .App-header {
+    /* padding: 10px 15px; */ /* REMOVED */
+    padding: 10px 0; /* Vertical padding only, horizontal comes from chat-container */
+    height: 50px; /* Adjust height */
+  }
+
+  .new-chat-header-button {
+    padding: 8px 15px;
+    font-size: 0.9em;
+    margin-right: 15px;
+  }
+
+  .App-header h1 {
+    font-size: 1.5em;
+  }
+
+  .messages-container {
+    padding: 0 5px;
+  }
+}
+
+/* Custom Scrollbar Styles */
+/* Works on Chrome, Edge, and Safari */
+::-webkit-scrollbar {
+  width: 8px; /* Slimmer scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(44, 44, 44, 0.5); /* Semi-transparent track */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #4a00e0;
+  border-radius: 10px;
+  border: 2px solid rgba(44, 44, 44, 0.5); /* Padding around thumb */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #5e16ff;
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4a00e0 rgba(44, 44, 44, 0.5);
+}

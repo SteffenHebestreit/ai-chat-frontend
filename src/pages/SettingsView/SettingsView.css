@@ -1,0 +1,143 @@
+.settings-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #1a1a1a; /* Match App.js background */
+  color: #e0e0e0; /* Match App.js text color */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #333; /* Match App.js header border */
+}
+
+.settings-header h1 {
+  margin: 0 0 0 20px; /* Add margin to the left of H1 */
+  font-size: 1.8em; /* Match App.js header */
+  font-weight: 300;
+  letter-spacing: 1px;
+  color: white;
+  flex-grow: 1; /* Allow title to take space */
+  text-align: center; /* Center the title */
+}
+
+.settings-back-button {
+  background-color: transparent; 
+  color: #4a00e0; /* Purple accent */
+  border: 1px solid #4a00e0;
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.settings-back-button:hover {
+  background-color: #4a00e0;
+  color: white;
+}
+
+.settings-content {
+  max-width: 600px;
+  margin: 0 auto;
+  background-color: #252525; /* Darker card background */
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.setting-item {
+  margin-bottom: 20px;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1em;
+  color: #c0c0c0;
+}
+
+.setting-item input[type="text"] {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 5px;
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+  font-size: 1em;
+  box-sizing: border-box;
+}
+
+.setting-item input[type="text"]:focus {
+  outline: none;
+  border-color: #4a00e0; /* Purple accent on focus */
+  box-shadow: 0 0 0 2px rgba(74, 0, 224, 0.3);
+}
+
+.setting-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+.settings-button-primary,
+.settings-button-secondary {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.95em;
+  transition: background-color 0.3s ease;
+}
+
+.settings-button-primary {
+  background-color: #4a00e0; /* Purple accent */
+  color: white;
+}
+
+.settings-button-primary:hover {
+  background-color: #5e16ff;
+}
+
+.settings-button-secondary {
+  background-color: #333;
+  color: #e0e0e0;
+}
+
+.settings-button-secondary:hover {
+  background-color: #444;
+}
+
+.settings-message {
+  margin-top: 20px;
+  padding: 10px;
+  background-color: rgba(74, 0, 224, 0.1);
+  border: 1px solid #4a00e0;
+  border-radius: 5px;
+  color: #c0c0c0;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .settings-header h1 {
+    font-size: 1.5em;
+  }
+  .settings-content {
+    padding: 20px;
+  }
+  .setting-actions {
+    flex-direction: column;
+  }
+  .settings-button-primary,
+  .settings-button-secondary {
+    width: 100%;
+  }
+}

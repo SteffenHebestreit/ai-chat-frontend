@@ -1,0 +1,180 @@
+.message {
+  padding: 12px 18px;
+  margin-bottom: 15px; /* From App.css */
+  border-radius: 10px; /* From App.css .messages-container .message */
+  line-height: 1.6;
+  max-width: min(85%,800px); /* From App.css */
+  word-wrap: break-word;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.95em;
+  align-items: flex-start;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* From App.css .messages-container .message */
+  position: relative; /* For animation */
+  opacity: 0; /* For animation */
+  transform: translateY(10px); /* For animation */
+  animation: fadeInMessage 0.5s forwards; /* From App.css */
+}
+
+@keyframes fadeInMessage { /* From App.css */
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.user {
+  /* background-color: #3a3a3c; */ /* Original MessageCard.css */
+  background-color: rgba(44, 44, 44, 0.85); /* From App.css */
+  color: #e0e0e0;
+  align-self: flex-end;
+  /* border-bottom-right-radius: 5px; */ /* Original MessageCard.css - overridden by general border-radius */
+  /* border: 1px solid transparent; */ /* REMOVED - From App.css, to test glow visibility */
+  box-shadow: 0 0 8px #4a00e0; /* From App.css */
+  margin-left: auto; /* From App.css */
+  margin-right: 1rem; /* From App.css */
+  backdrop-filter: blur(2px); /* From App.css */
+}
+
+.message.ai {
+  /* background-color: #2a2a2e; */ /* Original MessageCard.css */
+  background-color: rgba(56, 56, 56, 0.85); /* From App.css */
+  color: #e0e0e0; /* Harmonized with App.css, was #d1d1d1 */
+  align-self: flex-start;
+  /* border-bottom-left-radius: 5px; */ /* Original MessageCard.css - overridden by general border-radius */
+  /* border: 1px solid transparent; */ /* REMOVED - From App.css, to test glow visibility */
+  box-shadow: 0 0 8px #00bfa5; /* From App.css */
+  margin-right: auto; /* From App.css */
+  margin-left: 1rem; /* From App.css */
+  backdrop-filter: blur(2px); /* From App.css */
+}
+
+.message-content {
+  width: 100%; /* Ensure content takes full width available in the bubble */
+  text-align: left; /* Explicitly align text to the left */
+}
+
+/* Styles for ReactMarkdown generated elements */
+.message-content p,
+.message-content ul,
+.message-content ol,
+.message-content pre,
+.message-content blockquote,
+.message-content table {
+  text-align: left; /* Ensure all block elements within markdown are left-aligned */
+  margin-left: 0; /* Reset any potential inherited margin causing centering */
+  margin-right: 0; /* Reset any potential inherited margin causing centering */
+}
+
+.message p { /* This selector might be redundant if .message-content p is used, but kept for safety */
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  text-align: left; /* Ensure paragraphs are left-aligned */
+}
+
+.message pre {
+  background-color: #1e1e1e; /* Dark background for code blocks */
+  padding: 15px;
+  border-radius: 8px;
+  overflow-x: auto; /* Allow horizontal scrolling for long code lines */
+  margin: 10px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.message code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 0.9em; /* Slightly smaller for inline code */
+}
+
+.message pre code {
+  font-size: 0.85em; /* Slightly smaller for code within pre blocks */
+  background-color: transparent; /* Code inside pre shouldn't have its own background */
+  padding: 0;
+}
+
+.message ul,
+.message ol {
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  padding-left: 25px; /* Indent lists */
+}
+
+.message blockquote {
+  margin: 10px 0;
+  padding: 10px 15px;
+  background-color: #333;
+  border-left: 4px solid #4a00e0; /* Purple accent for blockquotes */
+  color: #ccc;
+  font-style: italic;
+}
+
+.message table {
+  width: auto; /* Let table size itself, or set to 100% if needed */
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 0.9em;
+}
+
+.message th,
+.message td {
+  border: 1px solid #444;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.message th {
+  background-color: #333;
+  font-weight: bold;
+}
+
+/* Timestamp styling for visual hierarchy */
+.message-timestamp {
+  font-size: 0.75em;      /* Smaller font */
+  color: #8e8e93;        /* Lighter, less prominent color */
+  margin-top: 8px;       /* Space above the timestamp */
+  width: 100%;           /* Allow text-align to work effectively */
+  text-align: right;     /* Align timestamp text to the right */
+}
+
+/* Typing indicator specific styles - using MessageCard.css version */
+.message.ai.typing {
+  display: flex;
+  align-items: center;
+  padding: 15px 18px; /* Consistent padding */
+  /* Resetting box-shadow and backdrop-filter if they shouldn't apply to typing indicator */
+  box-shadow: none; 
+  backdrop-filter: none;
+  background-color: rgba(56, 56, 56, 0.85); /* Keep AI bubble style */
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.typing-indicator span {
+  height: 8px;
+  width: 8px;
+  background-color: #8e8e93; /* Grey dots */
+  border-radius: 50%;
+  display: inline-block;
+  margin: 0 2px;
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1.0);
+  }
+}

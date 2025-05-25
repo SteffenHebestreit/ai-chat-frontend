@@ -1,0 +1,237 @@
+.chat-history-panel {
+  position: fixed;
+  top: 0;
+  right: -300px; /* Start off-screen */
+  width: 300px;
+  height: 100%;
+  background-color: #1e1e1e; /* Darker background, closer to App.css #1a1a1a */
+  color: #e0e0e0; /* Consistent light text */
+  z-index: 1000;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+  transition: right 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  /* backdrop-filter: blur(10px); /* Consider removing or adjusting if performance is an issue or if it doesn't fit */
+  border-left: 1px solid #333; /* Match App.css header/input wrapper border */
+  overflow: hidden;
+}
+
+.chat-history-panel.open {
+  right: 0;
+}
+
+.chat-history-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px; /* Consistent with App.js header padding */
+  border-bottom: 1px solid #333; /* Match App.css header/input wrapper border */
+  background-color: #252525; /* Slightly different shade for header, similar to input container */
+}
+
+.chat-history-panel-header h2 {
+  margin: 0;
+  font-size: 1.2rem; /* Or 1.15rem to be slightly smaller than main titles if any */
+  font-weight: 500;
+  color: #f0f0f0; /* Bright white for titles */
+}
+
+/* Assuming the close button is the toggle in App.js, so no .close-panel-btn here unless it's a separate button */
+
+.chat-actions {
+  padding: 10px 15px;
+  border-bottom: 1px solid #333; /* Consistent border */
+}
+
+.new-chat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 15px; /* Consistent with .clear-button in App.css */
+  background-color: #4a00e0; /* Main app purple accent */
+  color: white;
+  border: none;
+  border-radius: 5px; /* Consistent with .clear-button */
+  cursor: pointer;
+  font-size: 0.9em; /* Consistent with .clear-button */
+  transition: background-color 0.3s ease;
+}
+
+.new-chat-btn:hover {
+  background-color: #5e16ff; /* Lighter purple on hover, consistent */
+}
+
+.new-chat-btn span { /* If an icon is used */
+  margin-right: 8px;
+  font-size: 1.1rem;
+}
+
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0; /* Add some vertical padding */
+}
+
+/* Scrollbar styling for Chat History Panel - to match App.css */
+.chat-list::-webkit-scrollbar {
+  width: 12px; /* Match App.css */
+}
+
+.chat-list::-webkit-scrollbar-track {
+  background: #2c2c2c; /* Match App.css scrollbar-track */
+  border-radius: 10px; /* Match App.css */
+}
+
+.chat-list::-webkit-scrollbar-thumb {
+  background-color: #4a00e0; /* Match App.css scrollbar-thumb (purple accent) */
+  border-radius: 10px; /* Match App.css */
+  border: 3px solid #2c2c2c; /* Match App.css scrollbar-thumb border */
+}
+
+.chat-list::-webkit-scrollbar-thumb:hover {
+  background-color: #5e16ff; /* Match App.css scrollbar-thumb hover */
+}
+
+/* For Firefox */
+.chat-list {
+  scrollbar-width: thin;
+  scrollbar-color: #4a00e0 #2c2c2c; /* thumb and track color, match App.css */
+}
+
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px; /* Adjust padding for better spacing */
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out, border-left-color 0.2s ease-in-out;
+  position: relative;
+  border-bottom: 1px solid #333; /* Subtle separator, consistent */
+  border-left: 3px solid transparent; /* For selected state indication */
+  color: #c0c0c0; /* Default item text color */
+  font-size: 0.9rem;
+}
+
+.chat-item:last-child {
+  border-bottom: none; /* No border for the last item */
+}
+
+.chat-item:hover {
+  background-color: #2a2a2a; /* Darker hover, subtle */
+  color: #fff;
+}
+
+.chat-item.selected {
+  background-color: #2c2c2c; /* Slightly darker than user messages for selection */
+  border-left-color: #4a00e0; /* Purple accent for selected item's border */
+  color: #f5f5f5; /* Brighter text for selected item */
+  font-weight: 500;
+}
+
+/* Styles for chat item details if they exist (e.g., title, timestamp) */
+.chat-avatar { /* Assuming you might have avatars or icons */
+  margin-right: 12px;
+  /* ... other avatar styles ... */
+}
+
+.chat-details { /* UPDATED for vertical stacking of timestamps */
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Vertically center content if space allows */
+  padding-right: 5px; /* Add some padding so it doesn't touch delete button */
+}
+
+.chat-title { /* Example: if chat items have titles */
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e0e0e0; /* Ensure readability */
+}
+
+.chat-item.selected .chat-title {
+  color: #fff;
+}
+
+.chat-creation-time { /* ADDED: Styles for the new creation timestamp */
+  font-size: 0.75rem; /* Slightly smaller */
+  color: #909090;    /* Muted color */
+  margin-bottom: 3px; /* Space below it, before the title/updatedAt header */
+  white-space: nowrap; /* Prevent wrapping if possible */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-time { /* Example: if chat items have timestamps */
+  font-size: 0.75rem;
+  color: #888; /* Muted color for timestamps */
+  margin-left: auto; /* Push to the right if in flex container with title */
+  padding-left: 10px; /* Space from title */
+}
+
+.chat-item.selected .chat-time {
+  color: #bbb;
+}
+
+.delete-chat-btn {
+  background: none;
+  border: none;
+  color: #aaa; /* Default subtle color for the '×' */
+  font-size: 1.6rem; /* Make '×' a bit larger and clearer */
+  font-weight: bold; /* Make the '×' a bit bolder */
+  cursor: pointer;
+  padding: 0 5px; /* Add some padding for easier clicking */
+  width: 28px; /* Fixed width */
+  height: 28px; /* Fixed height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%; /* Circular background on hover */
+  transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0; /* Hidden by default, shown on .chat-item:hover */
+}
+
+.chat-item:hover .delete-chat-btn {
+  opacity: 1;
+  color: #ff4d4d; /* Bright red for delete action */
+  background-color: rgba(255, 77, 77, 0.15); /* Subtle red background on hover */
+}
+
+.delete-chat-btn:hover {
+  color: #fff; /* White 'x' on darker red background */
+  background-color: #e60000; /* Darker, more prominent red on direct hover of button */
+  /* Ensure the icon itself is centered if it has padding/line-height issues */
+  line-height: 1; /* Adjust if 'x' is not vertically centered */
+}
+
+.loading-chats,
+.error-message,
+.no-chats {
+  padding: 20px;
+  text-align: center;
+  color: #aaa; /* Consistent muted text */
+  font-size: 0.9rem;
+}
+
+.error-message {
+  color: #ff8080; /* Softer red for errors */
+}
+
+/* Mobile responsiveness - ensure panel width and toggle positioning are fine */
+@media (max-width: 768px) {
+  .chat-history-panel {
+    width: 280px; /* Slightly less width on mobile if needed */
+    right: -280px;
+  }
+  /* Adjust .chat-history-toggle.open right value in App.css if panel width changes for mobile */
+}
