@@ -1,8 +1,8 @@
 .input-container {
   display: flex;
   align-items: flex-end; /* Align items to the bottom for multi-line textarea */
-  padding: 10px 15px; /* From App.css - Adjusted padding */
-  background-color: #252525; /* From App.css - Dark background for input area */
+  padding: 10px 15px; /* Reverted top padding, bottom padding might need adjustment based on visual outcome */
+  background-color: #252525; /* Restored solid background color */
   border-top: 1px solid #333; /* Match App.js header border */
   gap: 10px; /* Space between textarea and buttons */
   width: 100%; /* Take full width of its parent (.chat-container) */
@@ -12,6 +12,20 @@
   box-shadow: 0 -2px 10px rgba(0,0,0,0.3); /* From App.css - Shadow on top */
   box-sizing: border-box;
   margin-bottom: 10px; /* From App.css - Space below input container */
+  position: relative; /* Needed for the ::before pseudo-element */
+}
+
+.input-container::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    left: 50%;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent 0%, #1a1a1a 100%);
+    pointer-events: none;
+    width: 100vw;
+    transform: translateX(-50%);
 }
 
 .input-container textarea {
