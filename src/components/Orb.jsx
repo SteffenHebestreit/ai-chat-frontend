@@ -99,7 +99,7 @@ const AI_STATE_MODIFIERS = {
     pulseRateFactor: 2.0, // More frequent pulses
     particleOpacity: BASE_PARTICLE_OPACITY + 0.15, // Higher opacity for more visibility
     // Green-themed colors for output state
-    pulseColorOverride: new THREE.Color(0x00ff66).multiplyScalar(1.4), // Bright green pulses
+    pulseColorOverride: new THREE.Color(0xffb300).multiplyScalar(1.4), // Bright green pulses
     portalColorNearOverride: new THREE.Color(0x00ffaa).multiplyScalar(1.4), // Bright teal near
     portalColorFarOverride: new THREE.Color(0x00aa44).multiplyScalar(1.3), // Deeper green far
     neuralSphereColor: NEURAL_SPHERE_OUTPUT_COLOR,
