@@ -45,7 +45,7 @@ export const saveUserMessage = async (chatSessionId, userMessageContent) => {
   return { status: response.status, ok: response.ok }; 
 };
 
-export const streamChatResponse = async (chatSessionId, userMessageContent) => {
+export const streamChatResponse = async (chatSessionId, userMessageContent, signal) => { // Added signal parameter
   const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/message/stream`, {
     method: 'POST',
     headers: {
@@ -53,6 +53,7 @@ export const streamChatResponse = async (chatSessionId, userMessageContent) => {
       'Content-Type': 'text/plain', // Override for this specific endpoint
     },
     body: userMessageContent,
+    signal, // Pass the signal to the fetch request
   });
 
   if (!response.ok) {
@@ -80,6 +81,24 @@ export const saveAgentResponse = async (chatSessionId, agentResponseContent) => 
     return response.json();
   }
   return { status: response.status, ok: response.ok }; 
+};
+
+export const abortStream = async (chatSessionId) => {
+  // Assuming a new backend endpoint to notify about stream abortion
+  const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/message/stream/abort`, {
+    method: 'POST', // Or 'DELETE', or appropriate method defined by your backend
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const errorData = await response.text().catch(() => `HTTP error ${response.status}`);
+    throw new Error(errorData || `HTTP error ${response.status} while aborting stream`);
+  }
+  // Check content type before parsing JSON, similar to other functions
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.indexOf("application/json") !== -1) {
+    return response.json();
+  }
+  return { status: response.status, ok: response.ok, message: 'Stream abortion signaled to backend.' };
 };
 
 export const fetchChatDetails = async (chatId) => {

@@ -38,6 +38,12 @@
   border: 1px solid #4a00e0; /* Ensure border is visible on focus if base is none */
 }
 
+.input-container textarea:disabled {
+  color: #888; /* Greyed out color for disabled state */
+  /* Optionally, change background or other properties */
+  /* background-color: #2a2a2a; */ 
+}
+
 .input-container button { /* Send button primarily */
   background: none; /* From App.css */
   color: #4a00e0; /* From App.css - Purple accent */
@@ -53,6 +59,7 @@
   transition: color 0.3s ease, background-color 0.3s ease;
   line-height: 1; /* From App.css */
   margin-left: 10px; /* From App.css, if gap isn't enough or for specific spacing */
+  align-self: center;
 }
 
 .input-container button:hover {
@@ -72,4 +79,13 @@
 
 .input-container button.settings-button:hover {
   color: #c0c0c0; /* From App.css for settings icon hover */
+}
+
+@media (max-width: 768px) {
+  /* Target the textarea within your UserInput component */
+  /* For example, if your UserInput component's root div has class .user-input-container */
+  .input-container textarea {
+    min-height: 80px; /* Increased height on mobile */
+    /* Adjust padding or other properties as needed */
+  }
 }

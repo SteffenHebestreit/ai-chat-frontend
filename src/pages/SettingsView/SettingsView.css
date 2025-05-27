@@ -24,31 +24,39 @@
   color: white;
   flex-grow: 1; /* Allow title to take space */
   text-align: center; /* Center the title */
+  margin-right: 50px; /* Add margin to the right to balance the back button space */
 }
 
 .settings-back-button {
   background-color: transparent; 
-  color: #4a00e0; /* Purple accent */
-  border: 1px solid #4a00e0;
-  padding: 8px 15px;
-  border-radius: 5px;
+  color: #e0e0e0; /* Default icon color */
+  border: none; /* Remove border for icon button */
+  padding: 8px; /* Adjust padding for icon */
+  border-radius: 50%; /* Make it circular for a modern icon button look */
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: 1em; /* Reset font-size if not needed, or adjust for icon container */
   transition: background-color 0.3s ease, color 0.3s ease;
+  display: flex; /* For centering icon if needed */
+  align-items: center;
+  justify-content: center;
+  width: 40px; /* Explicit width */
+  height: 40px; /* Explicit height */
 }
 
 .settings-back-button:hover {
-  background-color: #4a00e0;
-  color: white;
+  background-color: rgba(255, 255, 255, 0.1); /* Subtle hover for icon button */
+  color: #4a00e0; /* Purple accent on hover */
 }
 
 .settings-content {
   max-width: 600px;
   margin: 0 auto;
-  background-color: #252525; /* Darker card background */
+  background-color: rgba(56, 56, 56, 0.15); /* Match AI message card background */
   padding: 25px;
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  border-radius: 10px; /* Match message card border-radius */
+  box-shadow: 0 0 8px #4a00e0; /* Purple glow, similar to user messages or a neutral one */
+  backdrop-filter: blur(2px); /* Match message card backdrop-filter */
+  color: #e0e0e0; /* Ensure text inside is readable */
 }
 
 .setting-item {

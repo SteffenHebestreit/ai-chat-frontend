@@ -1,7 +1,6 @@
 import React from 'react'; // Removed useRef as it's passed as a prop now
 import { useNavigate } from 'react-router-dom';
 import './UserInput.css';
-
 function UserInput({ 
   inputText,
   onInputChange,
@@ -17,6 +16,11 @@ function UserInput({
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
+  const handleButtonClick = (e) => {
+    e.preventDefault(); // Prevent form submission if it's part of a form
+    onSendMessage();
+  };
+
   return (
     <div className="input-container">
       <textarea
@@ -29,15 +33,15 @@ function UserInput({
         onKeyDown={onKeyDown} // Pass down onKeyDown
         placeholder="Type your message... (Shift+Enter to send)"
         rows="1"
-        disabled={isLoading}
+        disabled={isLoading} // Disable textarea when isLoading is true
         title="Chat input area"
       />
       <button 
-        onClick={onSendMessage} 
-        disabled={isLoading || !inputText.trim()}
         title="Send message (Shift+Enter)"
+        onClick={handleButtonClick} 
+        disabled={!isLoading && !inputText.trim()} // Disable send if not loading and no text
       >
-        ➢
+        {!isLoading ? '➢' : '◼'}
       </button>
       <button 
         className="settings-button" 

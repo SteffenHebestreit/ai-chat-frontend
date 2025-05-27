@@ -1,8 +1,10 @@
 .message {
   padding: 12px 18px;
+  padding-top: 35px; /* Increased top padding for the button */
   margin-bottom: 15px; /* From App.css */
   border-radius: 10px; /* From App.css .messages-container .message */
   line-height: 1.6;
+  min-width: 250px; /* From App.css */
   max-width: min(85%,800px); /* From App.css */
   word-wrap: break-word;
   display: flex;
@@ -25,7 +27,7 @@
 
 .message.user {
   /* background-color: #3a3a3c; */ /* Original MessageCard.css */
-  background-color: rgba(44, 44, 44, 0.85); /* From App.css */
+  background-color: rgba(44, 44, 44, 0.15); /* From App.css */
   color: #e0e0e0;
   align-self: flex-end;
   /* border-bottom-right-radius: 5px; */ /* Original MessageCard.css - overridden by general border-radius */
@@ -38,7 +40,7 @@
 
 .message.ai {
   /* background-color: #2a2a2e; */ /* Original MessageCard.css */
-  background-color: rgba(56, 56, 56, 0.85); /* From App.css */
+  background-color: rgba(56, 56, 56, 0.15); /* From App.css */
   color: #e0e0e0; /* Harmonized with App.css, was #d1d1d1 */
   align-self: flex-start;
   /* border-bottom-left-radius: 5px; */ /* Original MessageCard.css - overridden by general border-radius */
@@ -47,6 +49,67 @@
   margin-right: auto; /* From App.css */
   margin-left: 1rem; /* From App.css */
   backdrop-filter: blur(2px); /* From App.css */
+}
+
+.message.system-error {
+  background-color: rgba(56, 56, 56, 0.15); /* Consistent with .ai */
+  color: #e0e0e0; /* Consistent with .ai */
+  align-self: flex-start; /* Consistent with .ai */
+  margin-right: auto; /* Consistent with .ai */
+  margin-left: 1rem; /* Consistent with .ai */
+  backdrop-filter: blur(2px); /* Consistent with .ai */
+  /* border: 1px solid #ff3333; */ /* Removed to keep structure same as .ai */
+  box-shadow: 0 0 8px #ff3333; /* Red glow for errors */
+}
+
+.message-icon-wrapper {
+  position: absolute;
+  top: 8px; /* Align with toggle button's top */
+  left: 12px; /* Padding from the left edge */
+  z-index: 1; /* Ensure it's above other content if overlapping, same as toggle */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* Align icons to the start (left) */
+}
+
+.message-role-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.message-role-icon.user-icon {
+  fill: #4a00e0; /* Matches .message.user box-shadow color */
+}
+
+.message-role-icon.ai-icon {
+  fill: #00bfa5; /* Matches .message.ai box-shadow color */
+}
+
+.message-role-icon.error-icon {
+  fill: #ff3333; /* Matches .message.system-error box-shadow color */
+}
+
+/* Remove styles for the old text toggle button */
+/* .message-toggle-button { ... } */
+/* .message-toggle-button:hover { ... } */
+
+/* Styles for the new collapse/expand icon button */
+.message-collapse-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 8px; /* Space between role icon and collapse/expand icon */
+  cursor: pointer;
+  display: flex; /* To align icon properly if needed */
+  align-items: center;
+  justify-content: center;
+  color: inherit; /* Inherit color for the icon from parent if not set by fill */
+}
+
+.message-collapse-button svg {
+  /* Ensure the SVG inside the button inherits the size if not already set */
+  width: 18px;
+  height: 18px;
 }
 
 .message-content {
@@ -64,6 +127,8 @@
   text-align: left; /* Ensure all block elements within markdown are left-aligned */
   margin-left: 0; /* Reset any potential inherited margin causing centering */
   margin-right: 0; /* Reset any potential inherited margin causing centering */
+  /* Add some top margin to prevent overlap with the absolute positioned button */
+  margin-top: 5px; 
 }
 
 .message p { /* This selector might be redundant if .message-content p is used, but kept for safety */
@@ -127,6 +192,43 @@
   font-weight: bold;
 }
 
+.message-content-preview {
+  width: 100%;
+  text-align: left;
+  font-style: italic;
+  color: #aaa; /* Lighter color for preview text */
+  margin-top: 5px; /* Similar to message-content p */
+  padding-right: 70px; /* Ensure preview text doesn't overlap with button if button was inside */
+}
+
+.message-scroll-top-button {
+  position: absolute;
+  bottom: 10px;
+  left: 10px; /* Changed from right: 10px; */
+  background-color: rgba(74, 0, 224, 0.6); /* Purple accent, semi-transparent */
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px; /* Slightly smaller */
+  height: 32px; /* Slightly smaller */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2; /* Above message content */
+  transition: background-color 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.message-scroll-top-button:hover {
+  background-color: rgba(94, 22, 255, 0.8); /* Lighter purple */
+}
+
+.message-scroll-top-button svg {
+  width: 18px; /* Adjust icon size */
+  height: 18px; /* Adjust icon size */
+}
+
 /* Timestamp styling for visual hierarchy */
 .message-timestamp {
   font-size: 0.75em;      /* Smaller font */
@@ -140,11 +242,12 @@
 .message.ai.typing {
   display: flex;
   align-items: center;
-  padding: 15px 18px; /* Consistent padding */
+  padding: 8px 12px; /* Reduced padding */
   /* Resetting box-shadow and backdrop-filter if they shouldn't apply to typing indicator */
   box-shadow: none; 
   backdrop-filter: none;
   background-color: rgba(56, 56, 56, 0.85); /* Keep AI bubble style */
+  min-width: auto; /* Allow it to be smaller than regular messages */
 }
 
 .typing-indicator {
@@ -153,12 +256,12 @@
 }
 
 .typing-indicator span {
-  height: 8px;
-  width: 8px;
+  height: 6px; /* Reduced height */
+  width: 6px; /* Reduced width */
   background-color: #8e8e93; /* Grey dots */
   border-radius: 50%;
   display: inline-block;
-  margin: 0 2px;
+  margin: 0 1.5px; /* Reduced margin */
   animation: typing-bounce 1.4s infinite ease-in-out both;
 }
 

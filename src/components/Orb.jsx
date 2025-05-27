@@ -1,11 +1,13 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react'; // Added useState, useEffect
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { vertexShader as torusVertexShader, fragmentShader as torusFragmentShader } from './shaders/torusParticles.fixed';
+import { vertexShader as neuralSphereVertexShader, fragmentShader as neuralSphereFragmentShader } from './shaders/neuralSphereParticles.fixed';
 
-// Configuration from Portal/Torus
-const PARTICLE_COUNT = 5000;
-const OUTER_RADIUS = 1.05;
-const INNER_RADIUS = 0.95;
+// Portal/Torus Configuration
+const PARTICLE_COUNT = 3000;
+const OUTER_RADIUS = 0.95;
+const INNER_RADIUS = 0.55;
 const AXIAL_PULSE_AMPLITUDE = 0.15;
 const RADIAL_PULSE_AMPLITUDE = 0.15;
 const PORTAL_DEPTH = 1.0;
@@ -18,14 +20,15 @@ const RADIAL_WAVE_SPEED = 0.75;
 const Z_WAVE_FREQUENCY = 3.0;
 const Z_WAVE_AMPLITUDE = 0.2;
 const Z_WAVE_SPEED = 0.6;
-const COLOR_NEAR = new THREE.Color('#00ffff');
-const COLOR_FAR = new THREE.Color('#4a00e0');
+// Enhanced bright colors
+const COLOR_NEAR = new THREE.Color('#00ffff').multiplyScalar(1.5); // Brighter cyan
+const COLOR_FAR = new THREE.Color('#4a00e0').multiplyScalar(1.3); // Brighter purple
 const BASE_BREATHE_SPEED = 0.5;
-const BASE_PARTICLE_OPACITY = 0.8; // Default opacity
+const BASE_PARTICLE_OPACITY = 0.9; // Increased from 0.8 for more visibility
 
-// Constants for the Neural Pulse effect (previously missing)
+// Constants for the Neural Pulse effect
 const NUM_NODES = 10; // Number of 'neural nodes' on the torus
-const NODE_COLOR = new THREE.Color(0xffaa00); // Color of the 'neural nodes'
+const NODE_COLOR = new THREE.Color(0xffaa00).multiplyScalar(1.4); // Brighter node color
 const PULSE_COLOR = new THREE.Color(0xffffff); // Color of the pulses
 const PULSE_SPEED = 2.5; // How fast pulses travel
 const PULSE_WIDTH = 0.83; // Width of the pulse wave
@@ -37,59 +40,106 @@ const PULSE_GENERATION_INTERVAL_MAX = 2.0; // Maximum seconds between new pulses
 
 // Neural Sphere Configuration
 const ENABLE_NEURAL_SPHERE = true; // Master toggle for the neural sphere
-const NEURAL_SPHERE_RADIUS = 0.25; // Radius of the central neural sphere
-const NEURAL_SPHERE_PARTICLE_COUNT = 200; // Number of particles in the neural sphere
-const NEURAL_SPHERE_BASE_COLOR = new THREE.Color(0x8888ff); // Light blue/purple
-const NEURAL_SPHERE_ACTIVITY_COLOR = new THREE.Color(0xffffff); // Bright white for activity
-const NEURAL_SPHERE_ERROR_COLOR = new THREE.Color(0xff3333); // Muted red for error
-const NEURAL_SPHERE_BASE_OPACITY = 0.7;
-const NEURAL_SPHERE_ACTIVITY_OPACITY = 0.9;
-const NEURAL_SPHERE_ERROR_OPACITY = 0.5;
-const NEURAL_SPHERE_BASE_PULSE_AMOUNT = 0.05; // How much it scales up
-const NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT = 0.15;
-const NEURAL_SPHERE_ERROR_PULSE_AMOUNT = 0.02;
-const NEURAL_SPHERE_PULSE_SPEED = 1.0; // Speed of the global pulse
-const NEURAL_SPHERE_SHIMMER_SPEED = 1.5; // Speed of individual particle shimmer
-const NEURAL_SPHERE_SHIMMER_INTENSITY = 0.3; // Max brightness change for shimmer
+const NEURAL_SPHERE_RADIUS = 0.4; // Increased from 0.35 for larger, more visible sphere
+const NEURAL_SPHERE_PARTICLE_COUNT = 400; // Increased from 300 for more particles and brighter effect
+const NEURAL_SPHERE_BASE_COLOR = new THREE.Color(0x8888ff).multiplyScalar(1.4); // Brighter light blue/purple
+const NEURAL_SPHERE_ACTIVITY_COLOR = new THREE.Color(0xffffff); // Already bright white for activity
+const NEURAL_SPHERE_ERROR_COLOR = new THREE.Color(0xff3333).multiplyScalar(1.3); // Brighter red for error
+const NEURAL_SPHERE_OUTPUT_COLOR = new THREE.Color(0x33ff66).multiplyScalar(1.5); // Bright green for output state
+const NEURAL_SPHERE_BASE_OPACITY = 0.9; // Increased from 0.8 for more visibility
+const NEURAL_SPHERE_ACTIVITY_OPACITY = 1.0; // Already at maximum
+const NEURAL_SPHERE_ERROR_OPACITY = 0.7; // Increased from 0.6
+const NEURAL_SPHERE_OUTPUT_OPACITY = 1.0; // Full opacity for output state
+const NEURAL_SPHERE_BASE_PULSE_AMOUNT = 0.12; // Increased from 0.08 for more visible pulsing
+const NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT = 0.25; // Increased from 0.2
+const NEURAL_SPHERE_ERROR_PULSE_AMOUNT = 0.06; // Increased from 0.04
+const NEURAL_SPHERE_OUTPUT_PULSE_AMOUNT = 0.3; // Strong pulse for output state
+const NEURAL_SPHERE_PULSE_SPEED = 1.2; // Increased from 1.0 for faster, more visible pulsing
+const NEURAL_SPHERE_SHIMMER_SPEED = 1.8; // Increased from 1.5 for faster shimmer
+const NEURAL_SPHERE_ERROR_SCALE = 1.15; // Scale factor for error state (15% growth)
 
 // --- BEGIN REFINEMENT CONSTANTS ---
 const NEURAL_SPHERE_ROTATION_SPEED = 0.41; // Radians per second for Y-axis rotation
-const NEURAL_SPHERE_PARTICLE_SIZE = 0.02; // Size of neural sphere particles
-const NEURAL_SPHERE_SHIMMER_COLOR_FACTOR = 0.3; // How much shimmer shifts color towards white (0-1)
-const NEURAL_SPHERE_POP_THRESHOLD = 0.85; // Shimmer value (0-1) to trigger "pop" effect
-const NEURAL_SPHERE_POP_COLOR_LERP_FACTOR = 0.7; // How much "pop" shifts color to activity color (0-1)
-const NEURAL_SPHERE_POP_OPACITY_BOOST = 0.3; // Value added to base particle opacity during pop (capped at 1.0)
 // --- END REFINEMENT CONSTANTS ---
-
-// --- END NEURAL SPHERE CONFIGURATION ---
 
 const TRANSITION_DURATION = 1.1; // Seconds for state transitions (Increased from 0.75)
 
-// AI State Modifiers
+// AI State Modifiers - Enhanced for brightness
 const AI_STATE_MODIFIERS = {
-  default:    { 
-    portalSpeedFactor: 1.0, pulseSpeedFactor: 0.7, pulseRateFactor: 0.5, 
+  default: { 
+    portalSpeedFactor: 1.0, pulseSpeedFactor: 0.8, pulseRateFactor: 0.6, 
     particleOpacity: BASE_PARTICLE_OPACITY, 
+    // Null overrides use the enhanced base colors defined earlier
     pulseColorOverride: null, portalColorNearOverride: null, portalColorFarOverride: null,
-    neuralSphereColor: NEURAL_SPHERE_BASE_COLOR, neuralSphereOpacity: NEURAL_SPHERE_BASE_OPACITY, neuralSpherePulseAmount: NEURAL_SPHERE_BASE_PULSE_AMOUNT
+    neuralSphereColor: NEURAL_SPHERE_BASE_COLOR, neuralSphereOpacity: NEURAL_SPHERE_BASE_OPACITY, neuralSpherePulseAmount: NEURAL_SPHERE_BASE_PULSE_AMOUNT,
+    pulsesFromCenter: false, // Default pulse origin behavior
+    neuralSphereScale: 1.0, // Default scale
+    frozenAnimation: false // Animation continues
   },
-  activity:   { 
-    portalSpeedFactor: 1.2, 
-    pulseSpeedFactor: 1.2, 
-    pulseRateFactor: 1.5, 
-    particleOpacity: BASE_PARTICLE_OPACITY + 0.15, // Slightly more opacity for glow
-    pulseColorOverride: new THREE.Color(0xffffff), // Bright white pulses (sparks)
-    portalColorNearOverride: new THREE.Color(0xffff33), // Bright yellow
-    portalColorFarOverride: new THREE.Color(0xffaa00),   // Deeper orange-yellow
-    neuralSphereColor: NEURAL_SPHERE_ACTIVITY_COLOR, neuralSphereOpacity: NEURAL_SPHERE_ACTIVITY_OPACITY, neuralSpherePulseAmount: NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT
+  activity: { 
+    portalSpeedFactor: 1.3, // Increased from 1.2
+    pulseSpeedFactor: 1.4, // Increased from 1.2
+    pulseRateFactor: 1.8, // Increased from 1.5 for more activity
+    particleOpacity: BASE_PARTICLE_OPACITY + 0.1, // Using new higher base opacity
+    // Enhanced bright colors with multiplyScalar for more luminosity
+    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.2), // Super bright white pulses
+    portalColorNearOverride: new THREE.Color(0xffff33).multiplyScalar(1.3), // Brighter yellow
+    portalColorFarOverride: new THREE.Color(0xffaa00).multiplyScalar(1.2), // Brighter orange-yellow
+    neuralSphereColor: NEURAL_SPHERE_ACTIVITY_COLOR.clone().multiplyScalar(1.2), // Even brighter neural sphere
+    neuralSphereOpacity: NEURAL_SPHERE_ACTIVITY_OPACITY,
+    neuralSpherePulseAmount: NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT,
+    pulsesFromCenter: false, // Default pulse origin behavior
+    neuralSphereScale: 1.0, // Default scale
+    frozenAnimation: false // Animation continues
   },
-  error:      { 
+  // New state: AI is outputting data
+  output: {
+    portalSpeedFactor: 1.4, // Faster than activity
+    pulseSpeedFactor: 1.6, // Faster pulses
+    pulseRateFactor: 2.0, // More frequent pulses
+    particleOpacity: BASE_PARTICLE_OPACITY + 0.15, // Higher opacity for more visibility
+    // Green-themed colors for output state
+    pulseColorOverride: new THREE.Color(0x00ff66).multiplyScalar(1.4), // Bright green pulses
+    portalColorNearOverride: new THREE.Color(0x00ffaa).multiplyScalar(1.4), // Bright teal near
+    portalColorFarOverride: new THREE.Color(0x00aa44).multiplyScalar(1.3), // Deeper green far
+    neuralSphereColor: NEURAL_SPHERE_OUTPUT_COLOR,
+    neuralSphereOpacity: NEURAL_SPHERE_OUTPUT_OPACITY,
+    neuralSpherePulseAmount: NEURAL_SPHERE_OUTPUT_PULSE_AMOUNT,
+    pulsesFromCenter: true, // Pulses originate from center/sphere
+    neuralSphereScale: 1.05, // Slightly larger sphere during output
+    frozenAnimation: false // Animation continues
+  },
+  // Enhanced error state
+  error: { 
     portalSpeedFactor: 0.3, pulseSpeedFactor: 0.2, pulseRateFactor: 0.1, 
-    particleOpacity: BASE_PARTICLE_OPACITY - 0.3, 
-    pulseColorOverride: new THREE.Color(0xff0000), 
-    portalColorNearOverride: new THREE.Color(0x8B0000), 
-    portalColorFarOverride: new THREE.Color(0x3d0000),
-    neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR, neuralSphereOpacity: NEURAL_SPHERE_ERROR_OPACITY, neuralSpherePulseAmount: NEURAL_SPHERE_ERROR_PULSE_AMOUNT
+    particleOpacity: BASE_PARTICLE_OPACITY - 0.2, // Less opacity reduction since base is higher
+    // Enhanced error colors
+    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.4), // Brighter red pulses
+    portalColorNearOverride: new THREE.Color(0x8B0000).multiplyScalar(1.2), // Brighter dark red
+    portalColorFarOverride: new THREE.Color(0x3d0000).multiplyScalar(1.1), // Slightly brighter deep red
+    neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR,
+    neuralSphereOpacity: NEURAL_SPHERE_ERROR_OPACITY,
+    neuralSpherePulseAmount: NEURAL_SPHERE_ERROR_PULSE_AMOUNT,
+    pulsesFromCenter: false, // Default pulse origin behavior
+    neuralSphereScale: 1.0, // Default scale (we'll handle special error expansion separately)
+    frozenAnimation: false // Animation continues
+  },
+  // Special severe error state with expanded particles and frozen sphere
+  criticalError: {
+    portalSpeedFactor: 0.1, // Very slow portal movement
+    pulseSpeedFactor: 0.05, // Almost no pulse movement
+    pulseRateFactor: 0.05, // Very few pulses
+    particleOpacity: BASE_PARTICLE_OPACITY, // Full opacity for error state
+    // Intense red colors
+    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.6), // Very bright red pulses
+    portalColorNearOverride: new THREE.Color(0xff2200).multiplyScalar(1.4), // Bright red-orange
+    portalColorFarOverride: new THREE.Color(0x660000).multiplyScalar(1.3), // Deep red
+    neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR.clone().multiplyScalar(1.2), // Brighter error color
+    neuralSphereOpacity: 0.9, // High opacity
+    neuralSpherePulseAmount: 0.01, // Almost no pulsing (appears frozen)
+    pulsesFromCenter: true, // Particles expand from center
+    neuralSphereScale: NEURAL_SPHERE_ERROR_SCALE, // 15% larger sphere
+    frozenAnimation: true // Frozen animation
   }
 };
 
@@ -108,13 +158,20 @@ const getResolvedVisuals = (stateName, basePColor, baseNearColor, baseFarColor) 
     neuralSphereColor: new THREE.Color().copy(modifier.neuralSphereColor),
     neuralSphereOpacity: modifier.neuralSphereOpacity,
     neuralSpherePulseAmount: modifier.neuralSpherePulseAmount,
+    // New properties for custom states
+    pulsesFromCenter: modifier.pulsesFromCenter || false,
+    neuralSphereScale: modifier.neuralSphereScale || 1.0,
+    frozenAnimation: modifier.frozenAnimation || false
   };
 };
 
 function Orb({ aiState = 'default', ...props }) { 
-  const pointsRef = useRef();
+  // Performance monitoring
+  const fpsRef = useRef({ frames: 0, lastMeasured: 0, fps: 0 });
+    const pointsRef = useRef();
   const neuralSpherePointsRef = useRef(); // Ref for the neural sphere
   const [activePulses, setActivePulses] = useState([]);
+  const [neuralSphereRotation, setNeuralSphereRotation] = useState(0); // Track neural sphere rotation
   const lastPulseGenerationTimeRef = useRef(0);
   const nextPulseIntervalRef = useRef(PULSE_GENERATION_INTERVAL_MIN + Math.random() * (PULSE_GENERATION_INTERVAL_MAX - PULSE_GENERATION_INTERVAL_MIN));
 
@@ -167,16 +224,23 @@ function Orb({ aiState = 'default', ...props }) {
     }
     return Array.from(indices);
   }, []); // NUM_NODES and PARTICLE_COUNT are const, no need for deps
-
+  
   const { particles } = useMemo(() => {
     const positions = new Float32Array(PARTICLE_COUNT * 3);
     const colors = new Float32Array(PARTICLE_COUNT * 3);
-    const data = new Float32Array(PARTICLE_COUNT * 10); // 10 elements per particle
+    
+    // Create separate attributes for each data element
+    const particleAngles = new Float32Array(PARTICLE_COUNT);
+    const particleRadii = new Float32Array(PARTICLE_COUNT);
+    const particlePhases = new Float32Array(PARTICLE_COUNT);
+    const particleDriftZ = new Float32Array(PARTICLE_COUNT);
+    const particleZOffsets = new Float32Array(PARTICLE_COUNT);
+    const particleIsNode = new Float32Array(PARTICLE_COUNT);
+    const particlePulseIntensities = new Float32Array(PARTICLE_COUNT);
+    const particleBasePositions = new Float32Array(PARTICLE_COUNT * 3);
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
-      const i10 = i * 10;
-
       const isNode = nodeIndices.includes(i);
 
       // Portal particle initialization
@@ -194,17 +258,20 @@ function Orb({ aiState = 'default', ...props }) {
       positions[i3] = initialBaseX * SNAKE_EYE_SCALE_X; // Initial position with snake-eye
       positions[i3 + 1] = initialBaseY * SNAKE_EYE_SCALE_Y;
       positions[i3 + 2] = initialBaseZ; // Initial Z before breathing/waves
-
-      data[i10 + 0] = initialAngle;
-      data[i10 + 1] = initialRadius;
-      data[i10 + 2] = Math.random() * Math.PI * 2; // randomPhaseForBreath
-      data[i10 + 3] = initialDriftingZ;
-      data[i10 + 4] = staticZOffsetForPulse;
-      data[i10 + 5] = isNode ? 1 : 0;
-      data[i10 + 6] = 0; // currentPulseIntensity
-      data[i10 + 7] = initialBaseX;
-      data[i10 + 8] = initialBaseY;
-      data[i10 + 9] = initialBaseZ;
+      
+      // Store individual data elements in separate attributes
+      particleAngles[i] = initialAngle;
+      particleRadii[i] = initialRadius;
+      particlePhases[i] = Math.random() * Math.PI * 2; // randomPhaseForBreath
+      particleDriftZ[i] = initialDriftingZ;
+      particleZOffsets[i] = staticZOffsetForPulse;
+      particleIsNode[i] = isNode ? 1.0 : 0.0;
+      particlePulseIntensities[i] = 0.0; // currentPulseIntensity
+      
+      // Store base position
+      particleBasePositions[i3] = initialBaseX;
+      particleBasePositions[i3 + 1] = initialBaseY;
+      particleBasePositions[i3 + 2] = initialBaseZ;
 
       if (isNode) {
         colors[i3] = NODE_COLOR.r;
@@ -227,8 +294,23 @@ function Orb({ aiState = 'default', ...props }) {
     const particleGeometry = new THREE.BufferGeometry();
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    particleGeometry.setAttribute('particlesData', new THREE.BufferAttribute(data, 10));
-    return { particles: particleGeometry }; // Removed particlesData from return, access via geometry
+    
+    // Add individual data attributes
+    particleGeometry.setAttribute('particleAngle', new THREE.BufferAttribute(particleAngles, 1));
+    particleGeometry.setAttribute('particleRadius', new THREE.BufferAttribute(particleRadii, 1));
+    particleGeometry.setAttribute('particlePhase', new THREE.BufferAttribute(particlePhases, 1));
+    particleGeometry.setAttribute('particleDriftZ', new THREE.BufferAttribute(particleDriftZ, 1));
+    particleGeometry.setAttribute('particleZOffset', new THREE.BufferAttribute(particleZOffsets, 1));
+    particleGeometry.setAttribute('particleIsNode', new THREE.BufferAttribute(particleIsNode, 1));
+    particleGeometry.setAttribute('particlePulseIntensity', new THREE.BufferAttribute(particlePulseIntensities, 1));
+    particleGeometry.setAttribute('particlePosition', new THREE.BufferAttribute(particleBasePositions, 3));
+    
+    return { 
+      particles: particleGeometry,
+      // Expose references to buffer attributes for updates in useFrame
+      particleDriftZAttribute: particleGeometry.attributes.particleDriftZ,
+      particlePulseIntensityAttribute: particleGeometry.attributes.particlePulseIntensity
+    };
   }, [nodeIndices]); // Added nodeIndices dependency
 
   // --- BEGIN NEURAL SPHERE GEOMETRY ---
@@ -267,23 +349,58 @@ function Orb({ aiState = 'default', ...props }) {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4)); 
     geometry.setAttribute('shimmerData', new THREE.BufferAttribute(shimmerData, 1));
     return geometry;
-  }, []);
-  // --- END NEURAL SPHERE GEOMETRY ---
+  }, []);  // --- END NEURAL SPHERE GEOMETRY ---
+
+  // Create shader uniforms for torus particles
+  const torusUniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uDeltaTime: { value: 0 },
+    uPortalSpeedFactor: { value: 1.0 },
+    uBreatheSpeed: { value: BASE_BREATHE_SPEED },
+    // uDriftSpeed: { value: Z_DRIFT_SPEED }, // No longer needed by shader
+    uRadialWaveSpeed: { value: RADIAL_WAVE_SPEED },
+    uZWaveSpeed: { value: Z_WAVE_SPEED },
+    uParticleOpacity: { value: BASE_PARTICLE_OPACITY },
+    uPulseColor: { value: new THREE.Color(PULSE_COLOR) },
+    uPortalColorNear: { value: new THREE.Color(COLOR_NEAR) },
+    uPortalColorFar: { value: new THREE.Color(COLOR_FAR) }
+  }), []);
+
+  // Create shader uniforms for neural sphere particles
+  const neuralSphereUniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uDeltaTime: { value: 0 },
+    uNeuralSpherePulseSpeed: { value: NEURAL_SPHERE_PULSE_SPEED },
+    uNeuralSpherePulseAmount: { value: NEURAL_SPHERE_BASE_PULSE_AMOUNT },
+    uNeuralSphereShimmerSpeed: { value: NEURAL_SPHERE_SHIMMER_SPEED },
+    uNeuralSphereColor: { value: new THREE.Color(NEURAL_SPHERE_BASE_COLOR) },
+    uNeuralSphereOpacity: { value: NEURAL_SPHERE_BASE_OPACITY }
+  }), []);
 
   useFrame((state, delta) => {
-    if (!pointsRef.current || !pointsRef.current.geometry.attributes.position || !pointsRef.current.geometry.attributes.color || !pointsRef.current.geometry.attributes.particlesData || !pointsRef.current.material) return;
-    if (ENABLE_NEURAL_SPHERE && (!neuralSpherePointsRef.current || !neuralSpherePointsRef.current.geometry || !neuralSpherePointsRef.current.material || !neuralSphereParticleGeometry)) return;
-
+    if (!pointsRef.current || !pointsRef.current.material || 
+        (ENABLE_NEURAL_SPHERE && (!neuralSpherePointsRef.current || !neuralSpherePointsRef.current.material))) return;
 
     const time = state.clock.getElapsedTime();
     const ti = transitionInfoRef.current; // Transition Info
-
-    // Define these at the start of useFrame
-    const positionsArray = pointsRef.current.geometry.attributes.position.array;
-    const colorsArray = pointsRef.current.geometry.attributes.color.array;
-    const particleDataArray = pointsRef.current.geometry.attributes.particlesData.array;
-    const tempColorInstance = new THREE.Color();
-    const particlePosVecInstance = new THREE.Vector3();
+    
+/*     // Performance monitoring
+    fpsRef.current.frames++;
+    if (time - fpsRef.current.lastMeasured >= 1.0) {
+      fpsRef.current.fps = Math.round(fpsRef.current.frames / (time - fpsRef.current.lastMeasured));
+      fpsRef.current.lastMeasured = time;
+      fpsRef.current.frames = 0;
+      console.log(`Orb rendering at ${fpsRef.current.fps} FPS`);
+    } */
+    
+    // Update the time and delta uniforms for both shaders
+    torusUniforms.uTime.value = time;
+    torusUniforms.uDeltaTime.value = delta;
+    
+    if (ENABLE_NEURAL_SPHERE) {
+      neuralSphereUniforms.uTime.value = time;
+      neuralSphereUniforms.uDeltaTime.value = delta;
+    }
 
     if (ti.progress < 1) {
       if (ti.startTime === -1) { // First frame of a new transition
@@ -296,24 +413,39 @@ function Orb({ aiState = 'default', ...props }) {
 
       const source = ti.sourceVisuals;
       const target = ti.targetVisuals;
-      const cv = currentVisualsRef.current; // Current Visuals to update
-
+      const cv = currentVisualsRef.current; // Current Visuals to update      // Update JavaScript transition values
       cv.particleOpacity = THREE.MathUtils.lerp(source.particleOpacity, target.particleOpacity, progress);
       cv.portalSpeedFactor = THREE.MathUtils.lerp(source.portalSpeedFactor, target.portalSpeedFactor, progress);
       cv.pulseSpeedFactor = THREE.MathUtils.lerp(source.pulseSpeedFactor, target.pulseSpeedFactor, progress);
       cv.pulseRateFactor = THREE.MathUtils.lerp(source.pulseRateFactor, target.pulseRateFactor, progress);
-
       cv.pulseColor.lerpColors(source.pulseColor, target.pulseColor, progress);
       cv.portalColorNear.lerpColors(source.portalColorNear, target.portalColorNear, progress);
       cv.portalColorFar.lerpColors(source.portalColorFar, target.portalColorFar, progress);
-
-      // Lerp Neural Sphere properties
       cv.neuralSphereColor.lerpColors(source.neuralSphereColor, target.neuralSphereColor, progress);
       cv.neuralSphereOpacity = THREE.MathUtils.lerp(source.neuralSphereOpacity, target.neuralSphereOpacity, progress);
       cv.neuralSpherePulseAmount = THREE.MathUtils.lerp(source.neuralSpherePulseAmount, target.neuralSpherePulseAmount, progress);
+      
+      // Add new state properties
+      cv.neuralSphereScale = THREE.MathUtils.lerp(source.neuralSphereScale || 1.0, target.neuralSphereScale || 1.0, progress);
+      cv.pulsesFromCenter = progress > 0.5 ? target.pulsesFromCenter : source.pulsesFromCenter; // Switch halfway through transition
+      cv.frozenAnimation = progress > 0.5 ? target.frozenAnimation : source.frozenAnimation; // Switch halfway through transition
 
+      // Update shader uniforms directly during transition
+      torusUniforms.uParticleOpacity.value = cv.particleOpacity;
+      torusUniforms.uPortalSpeedFactor.value = cv.portalSpeedFactor;
+      torusUniforms.uBreatheSpeed.value = BASE_BREATHE_SPEED * cv.portalSpeedFactor;
+      // torusUniforms.uDriftSpeed.value = Z_DRIFT_SPEED * cv.portalSpeedFactor; // No longer needed
+      torusUniforms.uRadialWaveSpeed.value = RADIAL_WAVE_SPEED * cv.portalSpeedFactor;
+      torusUniforms.uZWaveSpeed.value = Z_WAVE_SPEED * cv.portalSpeedFactor;
+      torusUniforms.uPulseColor.value.copy(cv.pulseColor);
+      torusUniforms.uPortalColorNear.value.copy(cv.portalColorNear);
+      torusUniforms.uPortalColorFar.value.copy(cv.portalColorFar);
 
-      if (progress === 1) { // Transition finished, snap to target to ensure precision
+      if (ENABLE_NEURAL_SPHERE) {
+        neuralSphereUniforms.uNeuralSphereColor.value.copy(cv.neuralSphereColor);
+        neuralSphereUniforms.uNeuralSphereOpacity.value = cv.neuralSphereOpacity;
+        neuralSphereUniforms.uNeuralSpherePulseAmount.value = cv.neuralSpherePulseAmount;
+      }      if (progress === 1) { // Transition finished, snap to target to ensure precision
         cv.particleOpacity = target.particleOpacity;
         cv.portalSpeedFactor = target.portalSpeedFactor;
         cv.pulseSpeedFactor = target.pulseSpeedFactor;
@@ -321,58 +453,56 @@ function Orb({ aiState = 'default', ...props }) {
         cv.pulseColor.copy(target.pulseColor);
         cv.portalColorNear.copy(target.portalColorNear);
         cv.portalColorFar.copy(target.portalColorFar);
-        // Snap Neural Sphere properties
         cv.neuralSphereColor.copy(target.neuralSphereColor);
         cv.neuralSphereOpacity = target.neuralSphereOpacity;
         cv.neuralSpherePulseAmount = target.neuralSpherePulseAmount;
+        
+        // Set new state properties
+        cv.neuralSphereScale = target.neuralSphereScale || 1.0;
+        cv.pulsesFromCenter = target.pulsesFromCenter || false;
+        cv.frozenAnimation = target.frozenAnimation || false;
       }
     }
     
     // Use currentVisualsRef.current for all rendering logic
+    const cv = currentVisualsRef.current; // Cache current visuals
     const {
-      particleOpacity,
-      portalSpeedFactor,
       pulseSpeedFactor,
       pulseRateFactor,
-      pulseColor,
-      portalColorNear,
-      portalColorFar,
-      // Destructure neural sphere properties
-      neuralSphereColor,
-      neuralSphereOpacity,
-      neuralSpherePulseAmount
-    } = currentVisualsRef.current;
-
-    pointsRef.current.material.opacity = particleOpacity;
+    } = cv;
     
     const effectivePulseSpeed = PULSE_SPEED * pulseSpeedFactor;
     const effectivePulseRateFactor = pulseRateFactor;
-    
-    // currentPulseColor, currentPortalColorNear, currentPortalColorFar are now directly from currentVisualsRef
-    const currentBreatheSpeed = BASE_BREATHE_SPEED * portalSpeedFactor;
-    const currentDriftSpeed = Z_DRIFT_SPEED * portalSpeedFactor;
-    const currentRadialWaveSpeed = RADIAL_WAVE_SPEED * portalSpeedFactor;
-    const currentZWaveSpeed = Z_WAVE_SPEED * portalSpeedFactor;
-
-    // Pulse Generation (from neural network logic)
+      // Pulse Generation (from neural network logic)
     if (time - lastPulseGenerationTimeRef.current > nextPulseIntervalRef.current / effectivePulseRateFactor && activePulses.length < MAX_ACTIVE_PULSES) {
       if (nodeIndices.length > 0) {
-        const randomNodeParticleIndex = nodeIndices[Math.floor(Math.random() * nodeIndices.length)];
-        const nodeDataStartIndex = randomNodeParticleIndex * 10; // Each particle has 10 data elements
-        // Use the initial base position of the node as the pulse origin
-        // This means pulses originate from the torus structure, before drift/wave displacement of the node itself
-        const origin = new THREE.Vector3(
-          particleDataArray[nodeDataStartIndex + 7], // initialBaseX - USE CORRECT ARRAY
-          particleDataArray[nodeDataStartIndex + 8], // initialBaseY - USE CORRECT ARRAY
-          particleDataArray[nodeDataStartIndex + 9]  // initialBaseZ - USE CORRECT ARRAY
-        );
+        let origin;
+        
+        // Check if pulses should originate from center (for output or criticalError states)
+        if (currentVisualsRef.current.pulsesFromCenter) {
+          // For output or critical error state: pulses originate from center
+          origin = new THREE.Vector3(0, 0, 0);
+        } else {
+          // Default: pulses originate from random nodes
+          const randomNodeParticleIndex = nodeIndices[Math.floor(Math.random() * nodeIndices.length)];
+          // Get the data from the individual attributes to find the pulse origin
+          const particlePositions = pointsRef.current.geometry.attributes.particlePosition.array;
+          const nodeBaseIndex = randomNodeParticleIndex * 3;
+          
+          origin = new THREE.Vector3(
+            particlePositions[nodeBaseIndex], // x
+            particlePositions[nodeBaseIndex + 1], // y
+            particlePositions[nodeBaseIndex + 2]  // z
+          );
+        }
+        
         setActivePulses(prev => [...prev, { origin, startTime: time, id: Math.random() }]);
         lastPulseGenerationTimeRef.current = time;
         nextPulseIntervalRef.current = (PULSE_GENERATION_INTERVAL_MIN + Math.random() * (PULSE_GENERATION_INTERVAL_MAX - PULSE_GENERATION_INTERVAL_MIN));
       }
     }
     
-    // Update and filter active pulses (from neural network logic)
+    // Update and filter active pulses
     const updatedActivePulses = activePulses.filter(pulse => {
       const travelRadius = (time - pulse.startTime) * effectivePulseSpeed;
       return travelRadius <= PULSE_MAX_TRAVEL_RADIUS;
@@ -380,192 +510,201 @@ function Orb({ aiState = 'default', ...props }) {
     if (updatedActivePulses.length !== activePulses.length) {
       setActivePulses(updatedActivePulses);
     }
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
-      const i10 = i * 10;
-
-      const initialAngle = particleDataArray[i10 + 0];
-      const initialRadius = particleDataArray[i10 + 1];
-      const randomPhase = particleDataArray[i10 + 2];
-      let currentDriftingZ = particleDataArray[i10 + 3];
-      const staticZOffsetForPulse = particleDataArray[i10 + 4];
-      const isNode = particleDataArray[i10 + 5] === 1;
-      // currentPulseIntensity (particleDataArray[i10 + 6]) will be calculated below
-
-
-      // Portal: Update Drifting Z
-      if (portalSpeedFactor > 0) {
-        currentDriftingZ -= currentDriftSpeed * delta;
-        while (currentDriftingZ < -PORTAL_DEPTH / 2) {
-          currentDriftingZ += PORTAL_DEPTH;
-        }
-        particleDataArray[i10 + 3] = currentDriftingZ;
-      }
-
-      // Portal: Breathing factor
-      let breatheFactor = 0;
-      if (currentBreatheSpeed > 0) {
-        breatheFactor = Math.sin(time * currentBreatheSpeed + randomPhase);
-      }
-
-      // Portal: New Wave Morphing
-      const radialWaveOffset = time * currentRadialWaveSpeed; // Use portalSpeedFactor adjusted speed
-      const angleWaveComponent = Math.sin(initialAngle * RADIAL_WAVE_FREQUENCY + radialWaveOffset);
-      const dynamicRadius = initialRadius + angleWaveComponent * RADIAL_WAVE_AMPLITUDE;
-      const pulsedRadius = dynamicRadius + breatheFactor * RADIAL_PULSE_AMPLITUDE;
-
-      let x_base = Math.cos(initialAngle) * pulsedRadius;
-      let y_base = Math.sin(initialAngle) * pulsedRadius;
-
-      // Portal: Apply snake-eye scaling
-      let finalX = x_base * SNAKE_EYE_SCALE_X;
-      let finalY = y_base * SNAKE_EYE_SCALE_Y;
-
-      // Portal: Final Z
-      const zWaveOffset = time * currentZWaveSpeed; // Use portalSpeedFactor adjusted speed
-      const zAngleWaveComponent = Math.sin(initialAngle * Z_WAVE_FREQUENCY + zWaveOffset + randomPhase * 0.5);
-      const waveZ = zAngleWaveComponent * Z_WAVE_AMPLITUDE;
-      let finalZ = currentDriftingZ + staticZOffsetForPulse + breatheFactor * AXIAL_PULSE_AMPLITUDE + waveZ;
+    
+    // Process neural pulses
+    if (pointsRef.current.geometry) {
+      const geom = pointsRef.current.geometry;
+      const isNodeArray = geom.attributes.particleIsNode.array;
+      const pulseIntensityArray = geom.attributes.particlePulseIntensity.array;
+      const driftZArray = geom.attributes.particleDriftZ.array;
       
-      // Store current calculated position for pulse distance check if not a node
-      // For nodes, their visual position is also determined by portal effects for now
-      positionsArray[i3] = finalX;
-      positionsArray[i3 + 1] = finalY;
-      positionsArray[i3 + 2] = finalZ;
-      particlePosVecInstance.set(finalX, finalY, finalZ); // Current visual position - USE CORRECT INSTANCE
+      // Attributes needed for dynamic position calculation
+      const angles = geom.attributes.particleAngle.array;
+      const radii = geom.attributes.particleRadius.array;
+      const phases = geom.attributes.particlePhase.array;
+      const zOffsets = geom.attributes.particleZOffset.array;
 
-      // Neural: Calculate Pulse Intensity for non-node particles
-      let maxPulseIntensity = 0;
-      if (!isNode) {
+      const particlePosVecInstance = new THREE.Vector3(); // Reused for performance
+
+      // Update drifting Z value for all particles
+      // This should depend on portalSpeedFactor, not frozenAnimation, to match shader
+      if (cv.portalSpeedFactor > 0.0) { // Check if there's any speed
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          driftZArray[i] -= Z_DRIFT_SPEED * cv.portalSpeedFactor * delta;
+          // Wrap around when reaching the back of the portal
+          if (driftZArray[i] < -PORTAL_DEPTH / 2.0) {
+            driftZArray[i] += PORTAL_DEPTH;
+          }
+        }
+        // Mark the driftZ attribute as needing an update (for the shader)
+        geom.attributes.particleDriftZ.needsUpdate = true;
+      }
+
+      // Effective speeds for dynamic calculation on CPU
+      const effectiveBreatheSpeed = BASE_BREATHE_SPEED * cv.portalSpeedFactor;
+      const effectiveRadialWaveSpeed = RADIAL_WAVE_SPEED * cv.portalSpeedFactor;
+      const effectiveZWaveSpeed = Z_WAVE_SPEED * cv.portalSpeedFactor;
+
+      // Process each particle to calculate pulse effects
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        
+        const isNode = isNodeArray[i] === 1;
+        
+        // Skip nodes - they don't need pulse intensity calculated this way
+        if (isNode) {
+          pulseIntensityArray[i] = 0.0; // Nodes themselves don't show pulse intensity from these pulses
+          continue;
+        }
+        
+        // Calculate current particle position (mirroring vertex shader)
+        const particleAngle = angles[i];
+        const particleRadius = radii[i];
+        const particlePhase = phases[i];
+        const particleZOffset = zOffsets[i];
+        const currentDriftingZ = driftZArray[i];
+
+        let particleCurrentX, particleCurrentY, particleCurrentZ;
+
+        // Breathe factor
+        let breatheFactor = 0.0;
+        if (effectiveBreatheSpeed > 0.0001) { // Add a small threshold to avoid NaNs or tiny calculations if speed is effectively zero
+          breatheFactor = Math.sin(time * effectiveBreatheSpeed + particlePhase);
+        }
+
+        // Radial wave
+        const radialWaveOffset = time * effectiveRadialWaveSpeed;
+        const angleWaveComponent = Math.sin(particleAngle * RADIAL_WAVE_FREQUENCY + radialWaveOffset);
+        const dynamicRadius = particleRadius + angleWaveComponent * RADIAL_WAVE_AMPLITUDE;
+        const pulsedRadius = dynamicRadius + breatheFactor * RADIAL_PULSE_AMPLITUDE;
+        
+        const x_base = Math.cos(particleAngle) * pulsedRadius;
+        const y_base = Math.sin(particleAngle) * pulsedRadius;
+
+        particleCurrentX = x_base * SNAKE_EYE_SCALE_X;
+        particleCurrentY = y_base * SNAKE_EYE_SCALE_Y;
+
+        // Z-wave
+        const zWaveOffset = time * effectiveZWaveSpeed;
+        const zAngleWaveComponent = Math.sin(particleAngle * Z_WAVE_FREQUENCY + zWaveOffset + particlePhase * 0.5);
+        const waveZ = zAngleWaveComponent * Z_WAVE_AMPLITUDE;
+        particleCurrentZ = currentDriftingZ + particleZOffset + breatheFactor * AXIAL_PULSE_AMPLITUDE + waveZ;
+        
+        particlePosVecInstance.set(particleCurrentX, particleCurrentY, particleCurrentZ);
+        
+        // Calculate pulse intensity based on this current dynamic position
+        let maxPulseIntensity = 0;
         for (const pulse of updatedActivePulses) {
-          // Distance check against the particle\'s current *visual* position and pulse origin (which is static initial node pos)
-          const distToOrigin = particlePosVecInstance.distanceTo(pulse.origin); // USE CORRECT INSTANCE
+          const distToOrigin = particlePosVecInstance.distanceTo(pulse.origin);
           const pulseTravelRadius = (time - pulse.startTime) * effectivePulseSpeed;
           const diff = Math.abs(distToOrigin - pulseTravelRadius);
-
+          
           if (diff < PULSE_WIDTH / 2) {
-            const hitIntensity = (1.0 - diff / (PULSE_WIDTH / 2)) * Math.max(0, 1.0 - pulseTravelRadius / PULSE_MAX_TRAVEL_RADIUS);
+            const hitIntensity = (1.0 - diff / (PULSE_WIDTH / 2)) * 
+                                 Math.max(0, 1.0 - pulseTravelRadius / PULSE_MAX_TRAVEL_RADIUS);
             maxPulseIntensity = Math.max(maxPulseIntensity, hitIntensity);
           }
         }
+        
+        // Store the pulse intensity for the shader to use
+        pulseIntensityArray[i] = maxPulseIntensity;
       }
-      particleDataArray[i10 + 6] = maxPulseIntensity; // Store currentPulseIntensity
-
-      // Color Calculation: Combine Portal Z-depth color with Neural Pulse color
-      if (isNode) {
-        tempColorInstance.copy(NODE_COLOR); // USE CORRECT INSTANCE
-      } else {
-        // Portal: Z-depth color
-        const colorCycleLength = PORTAL_DEPTH;
-        const colorCycleOffset = -PORTAL_DEPTH / 2; 
-        let normalizedZPeriodic = (finalZ - colorCycleOffset) / colorCycleLength;
-        normalizedZPeriodic = normalizedZPeriodic - Math.floor(normalizedZPeriodic); 
-        tempColorInstance.copy(portalColorFar).lerp(portalColorNear, normalizedZPeriodic); // Use interpolated portal colors - USE CORRECT INSTANCE
-
-        // Neural: Lerp towards PULSE_COLOR based on intensity
-        tempColorInstance.lerp(pulseColor, maxPulseIntensity); // Use interpolated pulse color - USE CORRECT INSTANCE
-      }
-      
-      colorsArray[i3] = tempColorInstance.r; // USE CORRECT ARRAY & INSTANCE
-      colorsArray[i3 + 1] = tempColorInstance.g; // USE CORRECT ARRAY & INSTANCE
-      colorsArray[i3 + 2] = tempColorInstance.b; // USE CORRECT ARRAY & INSTANCE
+      // Notify Three.js that the data has changed
+      geom.attributes.particlePulseIntensity.needsUpdate = true;
     }
-
-    pointsRef.current.geometry.attributes.position.needsUpdate = true;
-    pointsRef.current.geometry.attributes.color.needsUpdate = true;
-    pointsRef.current.geometry.attributes.particlesData.needsUpdate = true;
-
-    // --- BEGIN NEURAL SPHERE ANIMATION ---
-    if (ENABLE_NEURAL_SPHERE && neuralSpherePointsRef.current && neuralSphereParticleGeometry) {
-      // Rotation
-      neuralSpherePointsRef.current.rotation.y += delta * NEURAL_SPHERE_ROTATION_SPEED;
-
-      const nsColors = neuralSphereParticleGeometry.attributes.color.array; // RGBA
-      const nsShimmerData = neuralSphereParticleGeometry.attributes.shimmerData.array;
-      // const nsMaterial = neuralSpherePointsRef.current.material; // Material properties like global opacity are not set here anymore
+    // Neural Sphere rotation update
+    if (ENABLE_NEURAL_SPHERE) {
+      const { frozenAnimation } = currentVisualsRef.current;
       
-      const tempNsColorInstance = new THREE.Color(); // Reusable THREE.Color instance for calculations
-
-      // Global pulse for the neural sphere (scaling the points object)
-      const pulseScale = 1 + Math.sin(time * NEURAL_SPHERE_PULSE_SPEED) * neuralSpherePulseAmount;
-      neuralSpherePointsRef.current.scale.set(pulseScale, pulseScale, pulseScale);
-      
-      const baseParticleOpacityForCurrentState = neuralSphereOpacity; // Opacity from currentVisualsRef (handles transitions)
-
-      for (let i = 0; i < NEURAL_SPHERE_PARTICLE_COUNT; i++) {
-        const i4 = i * 4; // Index for RGBA components
-        const shimmerPhase = nsShimmerData[i];
-        const shimmerValue = (Math.sin(time * NEURAL_SPHERE_SHIMMER_SPEED + shimmerPhase) + 1) / 2; // Normalized 0 to 1
-
-        // Start with the sphere's current base color (state-dependent)
-        tempNsColorInstance.copy(neuralSphereColor); 
-        let finalParticleAlpha = baseParticleOpacityForCurrentState;
-
-        // 1. Base Shimmer Brightness (modulates the current neuralSphereColor)
-        const baseBrightnessFactor = 1.0 - NEURAL_SPHERE_SHIMMER_INTENSITY + shimmerValue * NEURAL_SPHERE_SHIMMER_INTENSITY;
-        tempNsColorInstance.multiplyScalar(baseBrightnessFactor);
-
-        // 2. General Shimmer Color Shift (subtly towards white)
-        // Clone before lerping to white, so pop effect can lerp from this shimmered color
-        let shimmerAdjustedColor = tempNsColorInstance.clone();
-        const generalColorShiftAmount = shimmerValue * NEURAL_SPHERE_SHIMMER_COLOR_FACTOR;
-        shimmerAdjustedColor.lerp(new THREE.Color(0xffffff), generalColorShiftAmount);
-
-        // 3. "Pop" Effect calculation
-        let popIntensity = 0;
-        if (shimmerValue > NEURAL_SPHERE_POP_THRESHOLD) {
-            popIntensity = (shimmerValue - NEURAL_SPHERE_POP_THRESHOLD) / (1.0 - NEURAL_SPHERE_POP_THRESHOLD);
-        }
-
-        if (popIntensity > 0) {
-            // Pop Color Lerp: Lerp from the shimmerAdjustedColor towards NEURAL_SPHERE_ACTIVITY_COLOR
-            shimmerAdjustedColor.lerp(NEURAL_SPHERE_ACTIVITY_COLOR, popIntensity * NEURAL_SPHERE_POP_COLOR_LERP_FACTOR);
-            
-            // Pop Opacity Boost: Add to base opacity, capped at 1.0
-            finalParticleAlpha = Math.min(1.0, baseParticleOpacityForCurrentState + popIntensity * NEURAL_SPHERE_POP_OPACITY_BOOST);
-        }
-
-        // Assign final color and alpha to buffer
-        nsColors[i4]     = shimmerAdjustedColor.r;
-        nsColors[i4 + 1] = shimmerAdjustedColor.g;
-        nsColors[i4 + 2] = shimmerAdjustedColor.b;
-        nsColors[i4 + 3] = finalParticleAlpha;
+      // Only update rotation if not in frozen state
+      if (!frozenAnimation) {
+        setNeuralSphereRotation(time * NEURAL_SPHERE_ROTATION_SPEED);
       }
-      neuralSphereParticleGeometry.attributes.color.needsUpdate = true;
     }
-    // --- END NEURAL SPHERE ANIMATION ---
-
-    pointsRef.current.rotation.x = 0;
-    pointsRef.current.rotation.y = 0;
-    pointsRef.current.rotation.z = 0; 
   });
+  // Update shader uniforms in useFrame
+  useEffect(() => {
+    // Update shader uniforms when aiState changes
+    if (currentVisualsRef.current) {
+      const {
+        portalSpeedFactor,
+        particleOpacity,
+        pulseColor,
+        portalColorNear,
+        portalColorFar,
+        neuralSphereColor,
+        neuralSphereOpacity,
+        neuralSpherePulseAmount,
+        frozenAnimation
+      } = currentVisualsRef.current;
 
+      // Update torus uniforms
+      torusUniforms.uPortalSpeedFactor.value = portalSpeedFactor;
+      torusUniforms.uBreatheSpeed.value = BASE_BREATHE_SPEED * portalSpeedFactor;
+      // torusUniforms.uDriftSpeed.value = Z_DRIFT_SPEED * portalSpeedFactor; // No longer needed
+      torusUniforms.uRadialWaveSpeed.value = RADIAL_WAVE_SPEED * portalSpeedFactor;
+      torusUniforms.uZWaveSpeed.value = Z_WAVE_SPEED * portalSpeedFactor;
+      torusUniforms.uParticleOpacity.value = particleOpacity;
+      torusUniforms.uPulseColor.value.copy(pulseColor);
+      torusUniforms.uPortalColorNear.value.copy(portalColorNear);
+      torusUniforms.uPortalColorFar.value.copy(portalColorFar);
+
+      // Update neural sphere uniforms
+      neuralSphereUniforms.uNeuralSpherePulseAmount.value = neuralSpherePulseAmount;
+      neuralSphereUniforms.uNeuralSphereColor.value.copy(neuralSphereColor);
+      neuralSphereUniforms.uNeuralSphereOpacity.value = neuralSphereOpacity;
+      
+      // For frozen animation in critical error state, we can reduce the shimmer speed to almost zero
+      if (frozenAnimation) {
+        neuralSphereUniforms.uNeuralSphereShimmerSpeed.value = 0.05; // Very slow shimmer for frozen look
+        neuralSphereUniforms.uNeuralSpherePulseSpeed.value = 0.1; // Very slow pulse for frozen look
+      } else {
+        neuralSphereUniforms.uNeuralSphereShimmerSpeed.value = NEURAL_SPHERE_SHIMMER_SPEED;
+        neuralSphereUniforms.uNeuralSpherePulseSpeed.value = NEURAL_SPHERE_PULSE_SPEED;
+      }
+    }
+  }, [aiState, torusUniforms, neuralSphereUniforms]);
   return (
     <> {/* Use a fragment to return multiple sibling components */}
+      {/* Add ambient light to increase overall scene brightness */}
+      <ambientLight intensity={0.4} />
+      
+      {/* Add point light at center for dynamic illumination */}
+      <pointLight position={[0, 0, 0]} intensity={0.8} distance={2} color="#ffffff" />
+      
       <points {...props} ref={pointsRef} geometry={particles}>
-        <pointsMaterial 
-          size={1.2} // From portal version
-          sizeAttenuation={false} // From portal version
-          transparent={true} 
-          // opacity={0.8} // Opacity is now set dynamically in useFrame
-          blending={THREE.AdditiveBlending} 
+        <shaderMaterial
+          vertexShader={torusVertexShader}
+          fragmentShader={torusFragmentShader}
+          uniforms={torusUniforms}
+          transparent={true}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
           vertexColors={true}
-          depthWrite={false} // Often good for additive blending of transparent particles
         />
-      </points>
-      {ENABLE_NEURAL_SPHERE && neuralSphereParticleGeometry && (
-        <points ref={neuralSpherePointsRef} geometry={neuralSphereParticleGeometry}>
-          <pointsMaterial
-            size={NEURAL_SPHERE_PARTICLE_SIZE} // Use new constant for particle size
-            sizeAttenuation={true} // Enable size attenuation
-            transparent={true}
-            blending={THREE.AdditiveBlending}
-            vertexColors={true} // Crucial for individual particle color AND alpha
-            depthWrite={false}
-            // Global opacity is now controlled via vertex alpha, derived from neuralSphereOpacity
-          />
-        </points>
+      </points>      {ENABLE_NEURAL_SPHERE && neuralSphereParticleGeometry && (        <group 
+          scale={[
+            currentVisualsRef.current.neuralSphereScale, 
+            currentVisualsRef.current.neuralSphereScale, 
+            currentVisualsRef.current.neuralSphereScale
+          ]}
+          rotation={[
+            0, 
+            currentVisualsRef.current.frozenAnimation ? 0 : neuralSphereRotation, 
+            0
+          ]}
+        >
+          <points ref={neuralSpherePointsRef} geometry={neuralSphereParticleGeometry}>
+            <shaderMaterial
+              vertexShader={neuralSphereVertexShader}
+              fragmentShader={neuralSphereFragmentShader}
+              uniforms={neuralSphereUniforms}
+              transparent={true}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+              vertexColors={true}
+            />
+          </points>
+        </group>
       )}
     </>
   );
