@@ -62,19 +62,19 @@ const NEURAL_SPHERE_ERROR_SCALE = 1.15; // Scale factor for error state (15% gro
 const NEURAL_SPHERE_ROTATION_SPEED = 0.41; // Radians per second for Y-axis rotation
 // --- END REFINEMENT CONSTANTS ---
 
-const TRANSITION_DURATION = 1.1; // Seconds for state transitions (Increased from 0.75)
+const TRANSITION_DURATION = 1.37; // Seconds for state transitions (Increased from 1.1)
 
 // AI State Modifiers - Enhanced for brightness
 const AI_STATE_MODIFIERS = {
   default: { 
-    portalSpeedFactor: 1.0, pulseSpeedFactor: 0.8, pulseRateFactor: 0.6, 
+    portalSpeedFactor: 0.4, pulseSpeedFactor: 0.8, pulseRateFactor: 0.2, 
     particleOpacity: BASE_PARTICLE_OPACITY, 
     // Null overrides use the enhanced base colors defined earlier
     pulseColorOverride: null, portalColorNearOverride: null, portalColorFarOverride: null,
     neuralSphereColor: NEURAL_SPHERE_BASE_COLOR, neuralSphereOpacity: NEURAL_SPHERE_BASE_OPACITY, neuralSpherePulseAmount: NEURAL_SPHERE_BASE_PULSE_AMOUNT,
     pulsesFromCenter: false, // Default pulse origin behavior
     neuralSphereScale: 1.0, // Default scale
-    frozenAnimation: false // Animation continues
+    frozenAnimation: true // Animation continues
   },
   activity: { 
     portalSpeedFactor: 1.3, // Increased from 1.2
@@ -99,7 +99,7 @@ const AI_STATE_MODIFIERS = {
     pulseRateFactor: 2.0, // More frequent pulses
     particleOpacity: BASE_PARTICLE_OPACITY + 0.15, // Higher opacity for more visibility
     // Green-themed colors for output state
-    pulseColorOverride: new THREE.Color(0xffb300).multiplyScalar(1.4), // Bright green pulses
+    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.4), // Bright green pulses
     portalColorNearOverride: new THREE.Color(0x00ffaa).multiplyScalar(1.4), // Bright teal near
     portalColorFarOverride: new THREE.Color(0x00aa44).multiplyScalar(1.3), // Deeper green far
     neuralSphereColor: NEURAL_SPHERE_OUTPUT_COLOR,
