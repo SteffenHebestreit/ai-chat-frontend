@@ -2,6 +2,8 @@
 
 This project is a React-based frontend for an AI chat application, now powered by Vite for a faster development experience. It features a dynamic 3D orb visualization, chat history management, user input handling, and message rendering with markdown support.
 
+![AI-Chat Frontend](https://github.com/SteffenHebestreit/ai-chat-frontend/blob/43a205879771e973b750434b3467bb59ad6c178b/Custom_AI-Chat_Frontend.png "AI-Chat Frontend")
+
 ## Project Setup and Running
 
 ### Prerequisites
