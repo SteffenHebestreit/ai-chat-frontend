@@ -2,7 +2,7 @@
   text-align: center;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100svh;
   background-color: #1a1a1a; /* Dark background for the app */
   color: #e0e0e0; /* Light text color */
   overflow: hidden; /* Prevent body scroll when panel is open */
