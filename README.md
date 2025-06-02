@@ -8,7 +8,7 @@ This project is a React-based frontend for an AI chat application, now powered b
 
 The application now supports uploading and analyzing visual content alongside text messages, with automatic LLM capability detection and file type warnings.
 
-![Image Support Feature](https://github.com/SteffenHebestreit/ai-chat-frontend/blob/main/Image_Support.png "Multimodal Image Support")
+![Image Support Feature](https://github.com/SteffenHebestreit/ai-chat-frontend/blob/dev/Image_Support.png "Multimodal Image Support")
 
 ## Features
 
