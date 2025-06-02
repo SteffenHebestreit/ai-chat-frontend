@@ -13,6 +13,7 @@
   box-sizing: border-box;
   margin-bottom: 10px; /* From App.css - Space below input container */
   position: relative; /* Needed for the ::before pseudo-element */
+  flex-wrap: wrap; /* Allow wrapping for file upload component */
 }
 
 .input-container::before {
@@ -95,11 +96,65 @@
   color: #c0c0c0; /* From App.css for settings icon hover */
 }
 
+.input-container button.attachment-button {
+  color: #a0a0a0;
+  font-size: 1.2em;
+  padding: 8px;
+  transition: all 0.3s ease;
+}
+
+.input-container button.attachment-button:hover {
+  color: #c0c0c0;
+  background-color: rgba(160, 160, 160, 0.1);
+}
+
+.input-container button.attachment-button.active {
+  color: #4a00e0;
+  background-color: rgba(74, 0, 224, 0.1);
+}
+
+.input-container button.send-button {
+  color: #4a00e0;
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.file-upload-wrapper {
+  width: 100%;
+  margin-top: 10px;
+  order: 3;
+}
+
+.capability-warning {
+  width: 100%;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  background-color: rgba(255, 165, 0, 0.2); /* Semi-transparent amber background */
+  border-left: 4px solid #FFA500; /* Orange warning border */
+  color: #FFD700; /* Golden text */
+  border-radius: 4px;
+  font-size: 0.9em;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  order: -1; /* Position at the top of the flex container */
+}
+
+.capability-warning::before {
+  content: "⚠️"; /* Warning emoji */
+  margin-right: 8px;
+  font-size: 1.1em;
+}
+
 @media (max-width: 768px) {
   /* Target the textarea within your UserInput component */
   /* For example, if your UserInput component's root div has class .user-input-container */
   .input-container textarea {
     min-height: 80px; /* Increased height on mobile */
     /* Adjust padding or other properties as needed */
+  }
+  
+  .file-upload-wrapper {
+    margin-top: 5px;
   }
 }

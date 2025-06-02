@@ -1,0 +1,114 @@
+/* ContentRenderer styles */
+.content-renderer {
+  width: 100%;
+}
+
+/* Thinking section styles */
+.thinking-section {
+  margin: 12px 0;
+  border-radius: 8px;
+  border-left: 3px solid #ffaa00;
+  background-color: rgba(255, 170, 0, 0.05);
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  background-color: rgba(255, 170, 0, 0.1);
+  transition: background-color 0.2s ease;
+  user-select: none;
+}
+
+.thinking-header:hover {
+  background-color: rgba(255, 170, 0, 0.15);
+}
+
+.thinking-label {
+  font-size: 0.9em;
+  font-weight: 500;
+  margin-left: 8px;
+  color: #996600;
+}
+
+.thinking-toggle-icon {
+  margin-left: auto;
+  color: #996600;
+  transition: transform 0.2s ease;
+}
+
+.thinking-content {
+  padding: 12px 16px;
+  font-style: italic;
+  color: #a0a0a0;
+  border-top: 1px solid rgba(255, 170, 0, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Thinking indicator animation */
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  min-width: 45px;
+}
+
+.question-marks {
+  display: flex;
+  align-items: center;
+}
+
+.thinking-indicator .question {
+  display: inline-block;
+  font-weight: bold;
+  color: #ffaa00;
+  font-size: 1.2em;
+  margin: 0 2px;
+  animation: jump 1s infinite;
+}
+
+.thinking-indicator .q1 {
+  animation-delay: 0s;
+}
+
+.thinking-indicator .q2 {
+  animation-delay: 0.2s;
+}
+
+.thinking-indicator .q3 {
+  animation-delay: 0.4s;
+}
+
+@keyframes jump {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Code block styling within thinking content */
+.thinking-content pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.thinking-content code {
+  font-family: 'Courier New', Courier, monospace;
+  font-style: normal;
+}
+
+/* Make sure the question marks are prominent */
+.thinking-indicator .question {
+  text-shadow: 0 0 4px rgba(255, 170, 0, 0.6);
+}

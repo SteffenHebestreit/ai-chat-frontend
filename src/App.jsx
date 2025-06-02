@@ -11,7 +11,12 @@ import {
   saveAgentResponse,
   fetchChatDetails,
   deleteChat as apiDeleteChat,
-  abortStream // Import the new service function
+  abortStream, // Import the new service function
+  createMultimodalMessagePayload,
+  streamMultimodalChatResponse,
+  fetchLlmCapabilities,
+  saveMultimodalUserMessage,
+  parseMultimodalContent
 } from './services/chatService';
 import './App.css';
 
@@ -26,15 +31,36 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [refreshHistoryKey, setRefreshHistoryKey] = useState(null);
   const [abortController, setAbortController] = useState(null); // New state for AbortController
+  const [selectedFile, setSelectedFile] = useState(null); // New state for file upload
+  const [llmCapabilities, setLlmCapabilities] = useState([]); // New state for LLM capabilities
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-
   // Add this useEffect to focus the input when loading is finished
   useEffect(() => {
     if (!isLoading && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isLoading]); // Dependency array includes isLoading
+  // Add this useEffect to fetch LLM capabilities on component mount
+  useEffect(() => {
+    const getLlmCapabilities = async () => {      try {
+        const data = await fetchLlmCapabilities();
+        if (data && Array.isArray(data)) {
+          setLlmCapabilities(data);
+        } else if (data && data.result && Array.isArray(data.result)) {
+          setLlmCapabilities(data.result);
+        }
+      } catch (error) {
+        console.error('Error fetching LLM capabilities:', error);
+      }
+    };
+    
+    getLlmCapabilities();
+  }, []);
+  // Handle file selection
+  const handleFileSelect = (file) => {
+    setSelectedFile(file);
+  };
 
   const handleDeleteChatInHistory = async (chatIdToDelete) => {
     try {
@@ -64,14 +90,14 @@ function App() {
       handleSendMessage();
     }
   };
-  
-  const handleClearChat = () => {
+    const handleClearChat = () => {
     setMessages([]);
     setInputText('');
     setIsLoading(false);
     setIsTyping(false);
     setCurrentChatId(null);
     setSelectedChatId(null);
+    setSelectedFile(null); // Clear selected file
   };
 
   const toggleChatHistory = () => {
@@ -98,17 +124,36 @@ function App() {
       if (data && data.result) {
         const chat = data.result;
         setCurrentChatId(chat.id);
-        
-        if (chat.messages && chat.messages.length > 0) {
+          if (chat.messages && chat.messages.length > 0) {
           const sortedMessages = [...chat.messages]
-            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-            .map(msg => ({
-              id: msg.id,
-              role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
-              content: msg.content,
-              timestamp: msg.timestamp,
-              isFromHistory: true // Add flag for history messages
-            }));
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))            .map(msg => {
+              let processedContent = msg.content;
+              let fileAttachment = null;              // Check if this might be multimodal content
+              const isMultimodal = 
+                (typeof msg.content === 'string' && 
+                 (msg.content.includes('Multimodal content:') || 
+                  msg.content.includes('ArrayList') ||
+                  msg.content.startsWith('[') ||
+                  msg.content.startsWith('{'))) ||
+                (msg.content && typeof msg.content === 'object' && 
+                 (Array.isArray(msg.content) || 
+                  (msg.content.content && Array.isArray(msg.content.content))));
+
+              if (isMultimodal) {
+                // Use utility function to parse multimodal content
+                const parsedContent = parseMultimodalContent(msg.content);
+                processedContent = JSON.stringify(parsedContent);
+              }
+
+              return {
+                id: msg.id,
+                role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
+                content: processedContent,
+                timestamp: msg.timestamp,
+                isFromHistory: true, // Add flag for history messages
+                fileAttachment
+              };
+            });
           setMessages(sortedMessages);
         } else {
           setMessages([]);
@@ -122,9 +167,8 @@ function App() {
       setIsLoading(false);
     }
   };
-
   const handleSendMessage = async () => {
-    if (!inputText.trim() && !isLoading) return; // Prevent sending empty messages if not loading
+    if ((!inputText.trim() && !selectedFile) && !isLoading) return; // Prevent sending empty messages if not loading
 
     // If already loading (i.e., AI is responding), this button press should mean "Stop"
     if (isLoading && abortController) {
@@ -132,28 +176,68 @@ function App() {
       return;
     }
     
-    if (!inputText.trim()) return; // Ensure inputText is not empty for new messages
+    if (!inputText.trim() && !selectedFile) return; // Ensure inputText is not empty or there's a file
 
     setOrbAiState('activity');
     const userMessageContent = inputText;
     setIsLoading(true);
-    setIsTyping(true);
+    setIsTyping(true);    // Create user message object for display
+    let userMessageDisplayContent = userMessageContent;
+    let fileAttachment = null;
+    const userMessageId = `user-${Date.now()}`; // Generate ID once
+
+    if (selectedFile) {
+      const fileType = selectedFile.type.startsWith('image/') ? 'image' : 'document';
+      userMessageDisplayContent = userMessageContent
+        ? `${userMessageContent}\n[Attached ${fileType}: ${selectedFile.name}]`
+        : `[Attached ${fileType}: ${selectedFile.name}]`;
+      
+      // Set file attachment immediately
+      fileAttachment = { file: selectedFile };
+      
+      // Create preview URL for the file if it's an image
+      if (selectedFile.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const previewUrl = e.target.result;
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === userMessageId 
+                ? { ...msg, fileAttachment: { file: selectedFile, previewUrl } }
+                : msg
+            )
+          );
+        };
+        reader.readAsDataURL(selectedFile);
+      }
+    }
 
     const userMessage = { 
-      id: `user-${Date.now()}`,
+      id: userMessageId,
       role: 'user', 
-      content: userMessageContent,
-      timestamp: new Date().toISOString()
-      // isFromHistory will be undefined (falsy) here, defaulting to expanded
+      content: userMessageDisplayContent,
+      timestamp: new Date().toISOString(),
+      fileAttachment // This will be updated asynchronously for images with previewUrl
     };
     setMessages(prevMessages => [...prevMessages, userMessage]);
 
     let chatSessionId = currentChatId;
     let isNewChat = false;
 
-    if (!chatSessionId) {
+    // Prepare the message payload based on whether there's a file or not
+    let messagePayload;
+    try {
+      messagePayload = await createMultimodalMessagePayload(userMessageContent, selectedFile);
+    } catch (err) {
+      console.error('Error preparing message payload:', err);
+      setMessages(prev => [...prev, { id: 'error-payload', role: 'system', content: `Error: Could not prepare message. ${err.message}` }]);
+      setOrbAiState('criticalError');
+      setIsLoading(false);
+      setIsTyping(false);
+      return;
+    }    if (!chatSessionId) {
       try {
-        const data = await createNewChat(userMessageContent);
+        const data = await createNewChat(messagePayload);
 
         if (data && data.result && data.result.id) {
           chatSessionId = data.result.id;
@@ -174,7 +258,12 @@ function App() {
       }
     } else if (!isNewChat) { 
       try {
-        await saveUserMessage(chatSessionId, userMessageContent);
+        // If there's a file, use multimodal API
+        if (selectedFile) {
+          await saveMultimodalUserMessage(chatSessionId, messagePayload);
+        } else {
+          await saveUserMessage(chatSessionId, userMessageContent);
+        }
       } catch (err) {
         console.error('Error saving user message to existing chat:', err);
         // Optionally, set a less severe error state or handle differently
@@ -199,14 +288,33 @@ function App() {
       setIsLoading(false);
       setIsTyping(false);
       return;
-    }
-
-    const controller = new AbortController(); // Create a new AbortController
+    }    const controller = new AbortController(); // Create a new AbortController
     setAbortController(controller); // Store it in state
-
-    try {
-      // Pass the signal to streamChatResponse
-      const response = await streamChatResponse(chatSessionId, userMessageContent, controller.signal);
+    
+    try {      // Pass the signal to streamChatResponse - choose correct method based on content type
+      let response;      if (selectedFile) {
+        // Get the first available LLM ID that supports multimodal content
+        let defaultLlmId = '1'; // fallback default
+          if (llmCapabilities.length > 0) {
+          // First, try to find an LLM that supports images (for multimodal)
+          const imageCapableLlm = llmCapabilities.find(llm => 
+            llm.supportsImage || llm.capabilities?.image || 
+            (llm.supportedTypes && llm.supportedTypes.includes('image'))
+          );
+          
+          if (imageCapableLlm) {
+            defaultLlmId = imageCapableLlm.id || imageCapableLlm.llmId || '1';
+          } else {
+            // Fall back to the first available LLM
+            const firstLlm = llmCapabilities[0];
+            defaultLlmId = firstLlm.id || firstLlm.llmId || '1';
+          }
+        }
+        
+        response = await streamMultimodalChatResponse(chatSessionId, messagePayload, controller.signal, defaultLlmId);
+      } else {
+        response = await streamChatResponse(chatSessionId, userMessageContent, controller.signal);
+      }
 
       if (response.body) {
         setOrbAiState('output'); // AI is now outputting data
@@ -283,9 +391,9 @@ function App() {
           )
         );
         setOrbAiState('criticalError'); // Use criticalError for other errors
-      }
-    } finally {
+      }    } finally {
       setInputText(''); // Clear input text
+      setSelectedFile(null); // Clear selected file
       setIsLoading(false); // Reset loading state
       setIsTyping(false); // Reset typing indicator
       setAbortController(null); // Clear the abort controller
@@ -353,37 +461,30 @@ function App() {
             )}
           </button>
         </div>
-        <div className="messages-container">
-          {messages.map((message, index) => (
-            <MessageCard 
+        <div className="messages-container">          {messages.map((message, index) => (            <MessageCard 
               key={message.id || index} 
               role={message.role} 
               content={message.content} 
               timestamp={message.timestamp}
-              isFromHistory={message.isFromHistory} // Pass the new prop
+              isFromHistory={message.isFromHistory}
+              isTyping={isTyping && index === messages.length - 1 && message.role === 'ai'} // Only set isTyping for the last AI message
+              fileAttachment={message.fileAttachment}
             />
           ))}
           
-          {isTyping && (
-            <div className="message ai typing">
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          )}
-          
           <div ref={messagesEndRef} />
         </div>
-        
-        <UserInput
+          <UserInput
           inputText={inputText}
           onInputChange={handleInputChange}
           onSendMessage={isLoading ? handleStopGeneration : handleSendMessage} // Conditional handler
           isLoading={isLoading} // Pass isLoading to UserInput
           onKeyDown={handleKeyDown}
-          inputRef={inputRef} 
+          inputRef={inputRef}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
+          showFileUpload={true}
+          llmCapabilities={llmCapabilities}
         />
       </div>
     </div>

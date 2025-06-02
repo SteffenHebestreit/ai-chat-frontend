@@ -1,8 +1,28 @@
 # AI Chat Frontend (Vite + React)
 
-This project is a React-based frontend for an AI chat application, now powered by Vite for a faster development experience. It features a dynamic 3D orb visualization, chat history management, user input handling, and message rendering with markdown support.
+This project is a React-based frontend for an AI chat application, now powered by Vite for a faster development experience. It features a dynamic 3D orb visualization, chat history management, user input handling, message rendering with markdown support, and **multimodal content support** for images and PDFs.
 
 ![AI-Chat Frontend](https://github.com/SteffenHebestreit/ai-chat-frontend/blob/43a205879771e973b750434b3467bb59ad6c178b/Custom_AI-Chat_Frontend.png "AI-Chat Frontend")
+
+## Multimodal Support
+
+The application now supports uploading and analyzing visual content alongside text messages, with automatic LLM capability detection and file type warnings.
+
+![Image Support Feature](https://github.com/SteffenHebestreit/ai-chat-frontend/blob/main/Image_Support.png "Multimodal Image Support")
+
+## Features
+
+### Core Functionality
+- **Dynamic 3D Orb Visualization**: Interactive Three.js particle-based sphere animation
+- **Chat History Management**: Save, load, and manage multiple chat sessions
+- **Real-time Messaging**: Stream responses from AI with markdown support
+- **Responsive Design**: Modern UI that works across different screen sizes
+
+### Multimodal Content Support ⭐ *NEW*
+- **File Upload**: Drag-and-drop interface for images (JPEG, PNG, GIF, WebP) and PDFs
+- **Smart Capability Detection**: Automatic LLM compatibility checking with visual warnings
+- **Rich File Previews**: Thumbnail previews and file metadata display in chat
+- **Thinking Sections**: Collapsible AI reasoning sections for transparency
 
 ## Project Setup and Running
 
@@ -49,11 +69,19 @@ This builds the app for production to the `build` folder (or configured `outDir`
 ```
 frontend/
 ├── public/              # Static assets (favicon, manifest, etc.)
+├── docs/                # Documentation
+│   └── multimodal-support.md # Multimodal features documentation
 ├── src/
 │   ├── assets/          # Static assets (e.g., icons - logo.svg)
 │   ├── components/      # Reusable React components
 │   │   ├── ChatHistoryPanel.css
 │   │   ├── ChatHistoryPanel.jsx
+│   │   ├── ContentRenderer.css    # NEW: Multimodal content rendering styles
+│   │   ├── ContentRenderer.jsx    # NEW: Multimodal content and thinking sections
+│   │   ├── FileAttachment.css     # NEW: File attachment display styles
+│   │   ├── FileAttachment.jsx     # NEW: File attachment component
+│   │   ├── FileUpload.css         # NEW: Drag-and-drop upload styles
+│   │   ├── FileUpload.jsx         # NEW: File upload component
 │   │   ├── MessageCard.css
 │   │   ├── MessageCard.jsx
 │   │   ├── Orb.jsx
@@ -119,12 +147,37 @@ Renders individual chat messages, distinguishing between user and AI messages.
     *   Applies distinct styling for user and AI messages, including a glowing border effect.
 
 ### `UserInput.jsx`
-Handles user text input and message sending.
+Handles user text input and message sending, now enhanced with multimodal file upload capabilities.
 *   **Functionality**:
     *   Provides a `textarea` for users to type their messages.
     *   Manages the input state and handles message submission.
     *   Communicates with `App.js` to send messages to the backend and update the chat.
     *   Features auto-resizing `textarea` and a send button.
+    *   **NEW**: Includes file upload toggle and LLM capability detection with warnings.
+
+### `FileUpload.jsx` *(NEW)*
+Provides drag-and-drop file upload interface for multimodal content.
+*   **Functionality**:
+    *   Drag-and-drop zone for images (JPEG, PNG, GIF, WebP) and PDFs.
+    *   File preview functionality with thumbnails.
+    *   File validation and size checking.
+    *   Integration with the chat input system.
+
+### `FileAttachment.jsx` *(NEW)*
+Displays file attachments within chat messages.
+*   **Functionality**:
+    *   Renders file previews and metadata in messages.
+    *   Supports various file types with appropriate icons and previews.
+    *   Provides download functionality for attached files.
+    *   Responsive design for different screen sizes.
+
+### `ContentRenderer.jsx` *(NEW)*
+Enhanced content renderer supporting multimodal content and thinking sections.
+*   **Functionality**:
+    *   Renders both text and multimodal content in messages.
+    *   Supports collapsible "thinking" sections for AI reasoning display.
+    *   Maintains markdown rendering capabilities.
+    *   Handles mixed content types within single messages.
 
 ### `pages/SettingsView/SettingsView.jsx`
 A component intended for application settings.
@@ -135,7 +188,7 @@ A component intended for application settings.
 ## Services
 
 ### `services/chatService.js`
-Contains functions for interacting with the backend chat API.
+Contains functions for interacting with the backend chat API, now enhanced with multimodal support.
 *   **Key Functions**:
     *   `createNewChat()`: Initiates a new chat session.
     *   `sendMessage(chatId, message)`: Sends a user message to a specific chat.
@@ -143,6 +196,9 @@ Contains functions for interacting with the backend chat API.
     *   `getChatHistory(chatId)`: Fetches the message history for a specific chat.
     *   `getAllChats()`: Retrieves a list of all chat sessions for the user.
     *   `deleteChat(chatId)`: Deletes a specific chat session.
+    *   **NEW**: `createMultimodalMessagePayload()`: Prepares multimodal messages with text and files.    *   **NEW**: `prepareFileForUpload()`: Converts files to base64 data URIs for API compatibility.
+    *   **NEW**: `streamMultimodalChatResponse()`: Handles streaming responses for multimodal messages.
+    *   **NEW**: `fetchLlmCapabilities()`: Checks LLM support for specific content types.
     *   All functions use `axios` for HTTP requests and rely on `getBackendUrl()` from `apiConfig.js`.
 
 ### `config/apiConfig.js`
