@@ -4,6 +4,7 @@ import Orb from './components/Orb';
 import ChatHistoryPanel from './components/ChatHistoryPanel';
 import MessageCard from './components/MessageCard';
 import UserInput from './components/UserInput';
+import ModelSelector from './components/ModelSelector';
 import {
   createNewChat,
   saveUserMessage,
@@ -11,7 +12,12 @@ import {
   saveAgentResponse,
   fetchChatDetails,
   deleteChat as apiDeleteChat,
-  abortStream // Import the new service function
+  abortStream, // Import the new service function
+  createMultimodalMessagePayload,
+  streamMultimodalChatResponse,
+  fetchLlmCapabilities,
+  saveMultimodalUserMessage,
+  parseMultimodalContent
 } from './services/chatService';
 import './App.css';
 
@@ -24,17 +30,44 @@ function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [currentChatId, setCurrentChatId] = useState(null);
-  const [refreshHistoryKey, setRefreshHistoryKey] = useState(null);
-  const [abortController, setAbortController] = useState(null); // New state for AbortController
+  const [refreshHistoryKey, setRefreshHistoryKey] = useState(null);  const [abortController, setAbortController] = useState(null); // New state for AbortController
+  const [selectedFile, setSelectedFile] = useState(null); // New state for file upload
+  const [llmCapabilities, setLlmCapabilities] = useState([]); // New state for LLM capabilities
+  const [selectedModelId, setSelectedModelId] = useState(null); // New state for selected model
+  const [selectedModel, setSelectedModel] = useState(null); // New state for selected model object
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-
   // Add this useEffect to focus the input when loading is finished
   useEffect(() => {
     if (!isLoading && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isLoading]); // Dependency array includes isLoading
+  // Add this useEffect to fetch LLM capabilities on component mount
+  useEffect(() => {
+    const getLlmCapabilities = async () => {      try {
+        const data = await fetchLlmCapabilities();
+        if (data && Array.isArray(data)) {
+          setLlmCapabilities(data);
+        } else if (data && data.result && Array.isArray(data.result)) {
+          setLlmCapabilities(data.result);
+        }
+      } catch (error) {
+        console.error('Error fetching LLM capabilities:', error);
+      }
+    };
+    
+    getLlmCapabilities();
+  }, []);  // Handle file selection
+  const handleFileSelect = (file) => {
+    setSelectedFile(file);
+  };
+  // Handle model selection
+  const handleModelChange = (modelId, modelObject) => {
+    setSelectedModelId(modelId);
+    setSelectedModel(modelObject);
+    console.log('Model changed to:', modelId, 'Model object:', modelObject);
+  };
 
   const handleDeleteChatInHistory = async (chatIdToDelete) => {
     try {
@@ -64,14 +97,14 @@ function App() {
       handleSendMessage();
     }
   };
-  
-  const handleClearChat = () => {
+    const handleClearChat = () => {
     setMessages([]);
     setInputText('');
     setIsLoading(false);
     setIsTyping(false);
     setCurrentChatId(null);
     setSelectedChatId(null);
+    setSelectedFile(null); // Clear selected file
   };
 
   const toggleChatHistory = () => {
@@ -98,17 +131,36 @@ function App() {
       if (data && data.result) {
         const chat = data.result;
         setCurrentChatId(chat.id);
-        
-        if (chat.messages && chat.messages.length > 0) {
+          if (chat.messages && chat.messages.length > 0) {
           const sortedMessages = [...chat.messages]
-            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-            .map(msg => ({
-              id: msg.id,
-              role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
-              content: msg.content,
-              timestamp: msg.timestamp,
-              isFromHistory: true // Add flag for history messages
-            }));
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))            .map(msg => {
+              let processedContent = msg.content;
+              let fileAttachment = null;              // Check if this might be multimodal content
+              const isMultimodal = 
+                (typeof msg.content === 'string' && 
+                 (msg.content.includes('Multimodal content:') || 
+                  msg.content.includes('ArrayList') ||
+                  msg.content.startsWith('[') ||
+                  msg.content.startsWith('{'))) ||
+                (msg.content && typeof msg.content === 'object' && 
+                 (Array.isArray(msg.content) || 
+                  (msg.content.content && Array.isArray(msg.content.content))));
+
+              if (isMultimodal) {
+                // Use utility function to parse multimodal content
+                const parsedContent = parseMultimodalContent(msg.content);
+                processedContent = JSON.stringify(parsedContent);
+              }
+
+              return {
+                id: msg.id,
+                role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
+                content: processedContent,
+                timestamp: msg.timestamp,
+                isFromHistory: true, // Add flag for history messages
+                fileAttachment
+              };
+            });
           setMessages(sortedMessages);
         } else {
           setMessages([]);
@@ -122,9 +174,148 @@ function App() {
       setIsLoading(false);
     }
   };
+  // Helper function to send text-only messages
+  const sendTextMessage = async (messageContent, userMessageId) => {
+    try {
+      let chatSessionId = currentChatId;
+      let isNewChat = false;
+
+      if (!chatSessionId) {
+        try {
+          const data = await createNewChat(messageContent);
+
+          if (data && data.result && data.result.id) {
+            chatSessionId = data.result.id;
+            setCurrentChatId(chatSessionId);
+            isNewChat = true;
+          } else {
+            throw new Error('Failed to create new chat session');
+          }
+        } catch (err) {
+          console.error('Error creating new chat:', err);
+          setMessages(prev => [...prev, { 
+            id: 'error-chat-creation', 
+            role: 'system', 
+            content: `Error: Could not create new chat session. ${err.message}` 
+          }]);
+          setOrbAiState('criticalError');
+          setIsLoading(false);
+          setIsTyping(false);
+          return;
+        }
+      }
+
+      // Save the user message to the backend
+      try {
+        await saveUserMessage(chatSessionId, messageContent);
+      } catch (err) {
+        console.error('Error saving user message:', err);
+        setMessages(prev => [...prev, { 
+          id: 'error-save-message', 
+          role: 'system', 
+          content: `Error: Could not save message. ${err.message}` 
+        }]);
+        setOrbAiState('criticalError');
+        setIsLoading(false);
+        setIsTyping(false);
+        return;
+      }
+
+      // Create AbortController for this request
+      const controller = new AbortController();
+      setAbortController(controller);
+
+      // Start AI response
+      const aiMessageId = `ai-${Date.now()}`;
+      const aiMessage = { id: aiMessageId, role: 'ai', content: '', timestamp: new Date().toISOString() };
+      setMessages(prevMessages => [...prevMessages, aiMessage]);
+
+      // Log the model being used for debugging
+      const modelId = selectedModel?.id || selectedModelId || '1';
+      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel);
+
+      // Stream the response
+      const response = await streamChatResponse(
+        chatSessionId, 
+        messageContent, 
+        controller.signal,
+        modelId
+      );
+
+      if (response.body) {
+        setOrbAiState('output');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let aiResponse = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+            
+            const chunk = decoder.decode(value, { stream: true });
+            aiResponse += chunk;
+            setMessages(prevMessages => 
+              prevMessages.map(msg => 
+                msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
+              )
+            );
+          }
+        } catch (streamError) {
+          if (streamError.name === 'AbortError') {
+            console.log('Text stream reading aborted.');
+            throw streamError;
+          }
+          console.error("Error reading text stream:", streamError);
+          setOrbAiState('criticalError');
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+            )
+          );
+          return;
+        }
+
+        // Save AI response
+        await saveAgentResponse(chatSessionId, aiResponse);
+      } else {
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
+          )
+        );
+        setOrbAiState('criticalError');
+        setIsLoading(false);
+        setIsTyping(false);
+        return;
+      }
+      
+      setOrbAiState('success');
+      setRefreshHistoryKey(Date.now());
+    } catch (err) {
+      console.error('Error in text message flow:', err);
+      if (err.name === 'AbortError') {
+        console.log('Text message request was aborted');
+        setOrbAiState('default');
+      } else {
+        setMessages(prev => [...prev, { 
+          id: 'error-text-response', 
+          role: 'system', 
+          content: `Error: ${err.message}` 
+        }]);
+        setOrbAiState('criticalError');
+      }
+    } finally {
+      setIsLoading(false);
+      setIsTyping(false);
+      setAbortController(null);
+    }
+  };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() && !isLoading) return; // Prevent sending empty messages if not loading
+    if ((!inputText.trim() && !selectedFile) && !isLoading) return; // Prevent sending empty messages if not loading
 
     // If already loading (i.e., AI is responding), this button press should mean "Stop"
     if (isLoading && abortController) {
@@ -132,179 +323,300 @@ function App() {
       return;
     }
     
-    if (!inputText.trim()) return; // Ensure inputText is not empty for new messages
+    if (!inputText.trim() && !selectedFile) return; // Ensure inputText is not empty or there's a file
 
     setOrbAiState('activity');
     const userMessageContent = inputText;
     setIsLoading(true);
-    setIsTyping(true);
+    setIsTyping(true);    // Create user message object for display
+    let userMessageDisplayContent = userMessageContent;
+    let fileAttachment = null;
+    const userMessageId = `user-${Date.now()}`; // Generate ID once
 
-    const userMessage = { 
-      id: `user-${Date.now()}`,
-      role: 'user', 
-      content: userMessageContent,
-      timestamp: new Date().toISOString()
-      // isFromHistory will be undefined (falsy) here, defaulting to expanded
-    };
-    setMessages(prevMessages => [...prevMessages, userMessage]);
-
-    let chatSessionId = currentChatId;
-    let isNewChat = false;
-
-    if (!chatSessionId) {
-      try {
-        const data = await createNewChat(userMessageContent);
-
-        if (data && data.result && data.result.id) {
-          chatSessionId = data.result.id;
-          setCurrentChatId(chatSessionId);
-          setSelectedChatId(chatSessionId);
-          setRefreshHistoryKey(Date.now());
-          isNewChat = true;
-        } else {
-          throw new Error('Failed to create chat or retrieve chat ID.');
+    if (selectedFile) {
+      // Handle text files differently - read their content and include in message
+      if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md')) {
+        // Read text file content
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const fileContent = e.target.result;
+          const combinedContent = userMessageContent 
+            ? `${userMessageContent}\n\n--- Content from ${selectedFile.name} ---\n${fileContent}`
+            : `--- Content from ${selectedFile.name} ---\n${fileContent}`;
+          
+          // Update the user message with file content
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === userMessageId 
+                ? { ...msg, content: combinedContent }
+                : msg
+            )
+          );
+          
+          // Proceed with sending the message with text content
+          await sendTextMessage(combinedContent, userMessageId);
+        };
+        reader.readAsText(selectedFile);
+        
+        // For display purposes, show that file is being processed
+        userMessageDisplayContent = userMessageContent
+          ? `${userMessageContent}\n[Processing text file: ${selectedFile.name}]`
+          : `[Processing text file: ${selectedFile.name}]`;
+      } else {
+        // Handle image/PDF files as before
+        const fileType = selectedFile.type.startsWith('image/') ? 'image' : 'document';
+        userMessageDisplayContent = userMessageContent
+          ? `${userMessageContent}\n[Attached ${fileType}: ${selectedFile.name}]`
+          : `[Attached ${fileType}: ${selectedFile.name}]`;
+        
+        // Set file attachment immediately
+        fileAttachment = { file: selectedFile };
+        
+        // Create preview URL for the file if it's an image
+        if (selectedFile.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const previewUrl = e.target.result;
+            setMessages(prevMessages => 
+              prevMessages.map(msg => 
+                msg.id === userMessageId 
+                  ? { ...msg, fileAttachment: { file: selectedFile, previewUrl } }
+                  : msg
+              )
+            );
+          };
+          reader.readAsDataURL(selectedFile);
         }
-      } catch (err) {
-        console.error('Error creating new chat:', err);
-        setMessages(prev => [...prev, { id: 'error-create', role: 'system', content: `Error: Could not initiate chat session. ${err.message}` }]);
-        setOrbAiState('criticalError'); // Use criticalError
-        setIsLoading(false);
-        setIsTyping(false);
-        return;
       }
-    } else if (!isNewChat) { 
-      try {
-        await saveUserMessage(chatSessionId, userMessageContent);
-      } catch (err) {
-        console.error('Error saving user message to existing chat:', err);
-        // Optionally, set a less severe error state or handle differently
-        // For now, using criticalError as per prompt's visual description for "error"
-        setOrbAiState('criticalError');
+    }    const userMessage = { 
+      id: userMessageId,
+      role: 'user', 
+      content: userMessageDisplayContent,
+      timestamp: new Date().toISOString(),
+      fileAttachment // This will be updated asynchronously for images with previewUrl
+    };
+    setMessages(prevMessages => [...prevMessages, userMessage]);    // For text files, the sendTextMessage function is called asynchronously from the FileReader
+    // For other files or no files, continue with the current flow
+    const isTextFile = selectedFile && (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md'));
+    
+    if (!selectedFile || !isTextFile) {
+      // Handle regular text messages or multimodal (image/PDF) messages
+      if (!selectedFile) {
+        // Pure text message - use text-only flow
+        await sendTextMessage(userMessageContent, userMessageId);
+      } else {        // Multimodal message flow for images/PDFs
+        let chatSessionId = currentChatId;
+        let isNewChat = false;
+
+        // Prepare the message payload based on whether there's a file or not
+        let messagePayload;
+        try {
+          messagePayload = await createMultimodalMessagePayload(userMessageContent, selectedFile);
+        } catch (err) {
+          console.error('Error preparing message payload:', err);
+          setMessages(prev => [...prev, { id: 'error-payload', role: 'system', content: `Error: Could not prepare message. ${err.message}` }]);
+          setOrbAiState('criticalError');
+          setIsLoading(false);
+          setIsTyping(false);
+          return;
+        }
+
+        if (!chatSessionId) {
+          try {
+            const data = await createNewChat(messagePayload);
+
+            if (data && data.result && data.result.id) {
+              chatSessionId = data.result.id;
+              setCurrentChatId(chatSessionId);
+              setSelectedChatId(chatSessionId);
+              setRefreshHistoryKey(Date.now());
+              isNewChat = true;
+            } else {
+              throw new Error('Failed to create chat or retrieve chat ID.');
+            }
+          } catch (err) {
+            console.error('Error creating new chat:', err);
+            setMessages(prev => [...prev, { id: 'error-create', role: 'system', content: `Error: Could not initiate chat session. ${err.message}` }]);
+            setOrbAiState('criticalError');
+            setIsLoading(false);
+            setIsTyping(false);
+            return;
+          }
+        } else if (!isNewChat) {
+          try {
+            await saveMultimodalUserMessage(chatSessionId, messagePayload);
+          } catch (err) {
+            console.error('Error saving user message to existing chat:', err);
+            setOrbAiState('criticalError');
+          }
+        }        // Continue with multimodal streaming
+        await handleMultimodalStream(chatSessionId, messagePayload, userMessageId);
       }
     }
     
-    const aiMessageId = `agent-${Date.now()}`; // ID can remain agent-prefixed for uniqueness
+    // Clear input and file after sending
+    setInputText('');
+    setSelectedFile(null);
+  };
+
+  // Helper function to handle multimodal streaming
+  const handleMultimodalStream = async (chatSessionId, messagePayload, userMessageId) => {
+    const aiMessageId = `agent-${Date.now()}`;
     setMessages(prevMessages => [...prevMessages, { 
       id: aiMessageId, 
       role: 'ai', 
       content: '', 
       timestamp: new Date().toISOString() 
-      // isFromHistory will be undefined (falsy) here, defaulting to expanded
     }]);
 
     if (!chatSessionId) {
       console.error("Critical Error: chatSessionId is not set before streaming call.");
       setMessages(prev => [...prev, { id: 'error-stream-id', role: 'system', content: "Error: Chat session ID not available. Please try again." }]);
-      setOrbAiState('criticalError'); // Use criticalError
+      setOrbAiState('criticalError');
       setIsLoading(false);
       setIsTyping(false);
       return;
     }
 
-    const controller = new AbortController(); // Create a new AbortController
-    setAbortController(controller); // Store it in state
-
+    const controller = new AbortController();
+    setAbortController(controller);
+    
     try {
-      // Pass the signal to streamChatResponse
-      const response = await streamChatResponse(chatSessionId, userMessageContent, controller.signal);
+      // Determine which model to use for multimodal content
+      let defaultLlmId = selectedModelId || '1';
+      
+      // Log the model being used for debugging
+      console.log('Starting multimodal stream with initial model ID:', defaultLlmId, 'selectedModel:', selectedModel);
+      
+      // Check if selected model supports the file type
+      if (selectedModelId && selectedModel && selectedFile) {
+        const fileType = selectedFile.type.startsWith('image/') ? 'image' : 
+                        (selectedFile.type === 'application/pdf' ? 'pdf' : 'unknown');
+        
+        const selectedSupportsFile = (fileType === 'image' && (selectedModel.supportsImage || selectedModel.capabilities?.image)) ||
+                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf));
+        
+        if (!selectedSupportsFile && llmCapabilities.length > 0) {
+          // Find an LLM that supports the file type
+          const capableLlm = llmCapabilities.find(llm => {
+            if (fileType === 'image') {
+              return llm.supportsImage || llm.capabilities?.image || 
+                     (llm.supportedTypes && llm.supportedTypes.includes('image'));
+            }
+            if (fileType === 'pdf') {
+              return llm.supportsPdf || llm.capabilities?.pdf ||
+                     (llm.supportedTypes && llm.supportedTypes.includes('pdf'));
+            }
+            return false;
+          });
+          
+          if (capableLlm) {
+            defaultLlmId = capableLlm.id || capableLlm.llmId || '1';
+            console.warn(`Selected model doesn't support ${fileType}, using ${capableLlm.name || defaultLlmId} instead`);
+          }
+        }
+      } else if (llmCapabilities.length > 0) {
+        // No model selected, find an appropriate one
+        const imageCapableLlm = llmCapabilities.find(llm => 
+          llm.supportsImage || llm.capabilities?.image || 
+          (llm.supportedTypes && llm.supportedTypes.includes('image'))
+        );
+        
+        if (imageCapableLlm) {
+          defaultLlmId = imageCapableLlm.id || imageCapableLlm.llmId || '1';
+        } else {
+          // Fall back to the first available LLM
+          const firstLlm = llmCapabilities[0];
+          defaultLlmId = firstLlm.id || firstLlm.llmId || '1';
+        }
+      }
+
+      console.log('Final model ID for multimodal stream:', defaultLlmId);
+
+      const response = await streamMultimodalChatResponse(chatSessionId, messagePayload, controller.signal, defaultLlmId);
 
       if (response.body) {
-        setOrbAiState('output'); // AI is now outputting data
+        setOrbAiState('output');
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedResponseForSaving = '';
         
-        const processStream = async (idToSaveUnder) => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                if (idToSaveUnder && accumulatedResponseForSaving.trim()) {
-                  try {
-                    await saveAgentResponse(idToSaveUnder, accumulatedResponseForSaving);
-                  } catch (err) {
-                    console.error('Error saving AI response:', err);
-                  }
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (chatSessionId && accumulatedResponseForSaving.trim()) {
+                try {
+                  await saveAgentResponse(chatSessionId, accumulatedResponseForSaving);
+                } catch (err) {
+                  console.error('Error saving AI response:', err);
                 }
-                // No setOrbAiState('default') here, will be handled in finally or AbortError
-                return; // Exit loop and function on successful completion
               }
-              
-              const chunk = decoder.decode(value, { stream: true });
-              accumulatedResponseForSaving += chunk;
-              setMessages(prevMessages => 
-                prevMessages.map(msg => 
-                  msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
-                )
-              );
+              break;
             }
-          } catch (streamError) {
-            if (streamError.name === 'AbortError') {
-              console.log('Stream reading aborted.');
-              throw streamError; // Re-throw AbortError to be caught by the outer catch
-            }
-            console.error("Error reading stream:", streamError);
-            setOrbAiState('criticalError'); // Use criticalError for stream errors
+            
+            const chunk = decoder.decode(value, { stream: true });
+            accumulatedResponseForSaving += chunk;
             setMessages(prevMessages => 
               prevMessages.map(msg => 
-                msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+                msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
               )
             );
-            setIsLoading(false);
-            setIsTyping(false);
           }
-        };
-        await processStream(chatSessionId);
-        setOrbAiState('default'); // Set to default only on successful completion of stream
+        } catch (streamError) {
+          if (streamError.name === 'AbortError') {
+            console.log('Stream reading aborted.');
+            throw streamError;
+          }
+          console.error("Error reading stream:", streamError);
+          setOrbAiState('criticalError');
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+            )
+          );
+          return;
+        }
+        
+        setOrbAiState('success');
+        setRefreshHistoryKey(Date.now());
       } else {
         setMessages(prevMessages => 
           prevMessages.map(msg => 
             msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
           )
         );
-        setOrbAiState('criticalError'); // Use criticalError
-        setIsLoading(false);
-        setIsTyping(false);
+        setOrbAiState('criticalError');
       }
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.log('Stream fetch aborted by user.');
+        console.log('Multimodal stream fetch aborted by user.');
+        setOrbAiState('default');
+      } else {
+        console.error('Error in multimodal stream:', error);
         setMessages(prevMessages =>
           prevMessages.map(msg =>
-            msg.id === aiMessageId ? { ...msg, content: msg.content + '\n(Stream stopped by user)' } : msg
+            msg.id === aiMessageId ? { ...msg, content: `Error: ${error.message}` } : msg
           )
-        );
-        setOrbAiState('default'); // Reset orb state after abortion
-      } else {
-        console.error("Failed to send message or process stream:", error);
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError: ${error.message}` } : msg
-          )
-        );
-        setOrbAiState('criticalError'); // Use criticalError for other errors
+        );        setOrbAiState('criticalError');
       }
     } finally {
-      setInputText(''); // Clear input text
-      setIsLoading(false); // Reset loading state
-      setIsTyping(false); // Reset typing indicator
-      setAbortController(null); // Clear the abort controller
-      // inputRef.current?.focus(); // Focus handled by useEffect
+      setIsLoading(false);
+      setIsTyping(false);
+      setAbortController(null);
     }
   };
 
   const handleStopGeneration = async () => {
     if (abortController) {
-      abortController.abort(); // This will trigger the AbortError in handleSendMessage's catch block
-      // The UI updates (isLoading, isTyping, orbState) will be handled by handleSendMessage's finally/catch block.
+      abortController.abort();
     }
     if (currentChatId) {
       try {
-        await abortStream(currentChatId); // Notify backend
+        await abortStream(currentChatId);
         console.log('Backend notified of stream abortion.');
       } catch (error) {
         console.error('Error notifying backend of stream abortion:', error);
-        // Optionally, display a message to the user about this failure
       }
     }
   };
@@ -327,8 +639,7 @@ function App() {
         onDeleteChat={handleDeleteChatInHistory}
       />
 
-      <div className={`chat-container ${isPanelOpen ? 'panel-open' : ''}`}>
-        <div className="App-header">
+      <div className={`chat-container ${isPanelOpen ? 'panel-open' : ''}`}>        <div className="App-header">
           <button
             className="new-chat-header-button"
             onClick={handleClearChat}
@@ -337,6 +648,12 @@ function App() {
           >
             New Chat
           </button>
+          <ModelSelector
+            llmCapabilities={llmCapabilities}
+            selectedModelId={selectedModelId}
+            onModelChange={handleModelChange}
+            disabled={isLoading}
+          />
           <button 
             className={`chat-history-toggle ${isPanelOpen ? 'panel-is-open' : ''}`} 
             onClick={toggleChatHistory}
@@ -353,39 +670,31 @@ function App() {
             )}
           </button>
         </div>
-        <div className="messages-container">
-          {messages.map((message, index) => (
-            <MessageCard 
+        <div className="messages-container">          {messages.map((message, index) => (            <MessageCard 
               key={message.id || index} 
               role={message.role} 
               content={message.content} 
               timestamp={message.timestamp}
-              isFromHistory={message.isFromHistory} // Pass the new prop
+              isFromHistory={message.isFromHistory}
+              isTyping={isTyping && index === messages.length - 1 && message.role === 'ai'} // Only set isTyping for the last AI message
+              fileAttachment={message.fileAttachment}
             />
           ))}
           
-          {isTyping && (
-            <div className="message ai typing">
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          )}
-          
           <div ref={messagesEndRef} />
-        </div>
-        
-        <UserInput
+        </div>          <UserInput
           inputText={inputText}
           onInputChange={handleInputChange}
           onSendMessage={isLoading ? handleStopGeneration : handleSendMessage} // Conditional handler
           isLoading={isLoading} // Pass isLoading to UserInput
           onKeyDown={handleKeyDown}
-          inputRef={inputRef} 
-        />
-      </div>
+          inputRef={inputRef}
+          onFileSelect={handleFileSelect}
+          selectedFile={selectedFile}
+          showFileUpload={true}
+          llmCapabilities={llmCapabilities}
+          selectedModel={selectedModel}
+        />      </div>
     </div>
   );
 }

@@ -1,30 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'; // Added useEffect, useRef
-import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import remarkGfm from 'remark-gfm';
+import ContentRenderer from './ContentRenderer';
+import FileAttachment from './FileAttachment';
 import './MessageCard.css';
-
-// Helper for syntax highlighting in ReactMarkdown
-const syntaxHighlighterComponents = {
-  code({node, inline, className, children, ...props}) {
-    const match = /language-(\w+)/.exec(className || '');
-    return !inline && match ? (
-      <SyntaxHighlighter
-        style={atomDark}
-        language={match[1]}
-        PreTag="div"
-        {...props}
-      >
-        {String(children).replace(/\n$/, '')}
-      </SyntaxHighlighter>
-    ) : (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    );
-  }
-};
 
 // Icon Components
 const UserRoleIcon = () => (
@@ -68,7 +45,7 @@ const ExpandIcon = ({ className }) => (
 );
 
 
-function MessageCard({ role, content, timestamp, isFromHistory }) {
+function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAttachment }) {
   const [isExpanded, setIsExpanded] = useState(
     !(isFromHistory && content && content.length >= 250)
   );
@@ -123,14 +100,12 @@ function MessageCard({ role, content, timestamp, isFromHistory }) {
             }
           </button>
         )}
-      </div>
-      {isExpanded && (
+      </div>      {isExpanded && (
         <div ref={messageContentRef} className="message-content">
-          <ReactMarkdown
-            children={content}
-            remarkPlugins={[remarkGfm]}
-            components={syntaxHighlighterComponents}
-          />
+          {fileAttachment && (
+            <FileAttachment file={fileAttachment.file} previewUrl={fileAttachment.previewUrl} />
+          )}
+          <ContentRenderer content={content} isTyping={isTyping} />
         </div>
       )}
       {!isExpanded && content && (
