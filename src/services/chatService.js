@@ -86,8 +86,9 @@ export const saveMultimodalUserMessage = async (chatSessionId, messageData) => {
   return { status: response.status, ok: response.ok };
 };
 
-export const streamChatResponse = async (chatSessionId, userMessageContent, signal) => { // Added signal parameter
-  const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/message/stream`, {
+export const streamChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => { // Added signal parameter and llmId
+  const url = `${getBackendUrl()}/chats/${chatSessionId}/message/stream${llmId ? `?llmId=${llmId}` : ''}`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       ...getAuthHeaders(),

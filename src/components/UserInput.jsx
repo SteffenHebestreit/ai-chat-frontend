@@ -13,36 +13,78 @@ function UserInput({
   onFileSelect,
   selectedFile,
   showFileUpload = true,
-  llmCapabilities = []
-}) {
-  const [showCapabilityWarning, setShowCapabilityWarning] = useState(false);
+  llmCapabilities = [],
+  selectedModel = null
+}) {  const [showCapabilityWarning, setShowCapabilityWarning] = useState(false);
   const [capabilityWarningMessage, setCapabilityWarningMessage] = useState('');
   const navigate = useNavigate();
   const [isFileUploadVisible, setIsFileUploadVisible] = useState(false);
-  // Check if current file type is supported by available LLMs
+    // Check if the selected model supports file uploads (text files are always supported)
+  const selectedModelSupportsFiles = selectedModel ? true : false;
+   // Generate tooltip text based on selected model capabilities
+  const getFileUploadTooltip = () => {
+    if (!selectedModel) return "Attach text, image, or PDF file";
+    
+    const supportsImage = selectedModel.supportsImage || selectedModel.capabilities?.image;
+    const supportsPdf = selectedModel.supportsPdf || selectedModel.capabilities?.pdf;
+    
+    // Always include text files since all models support text
+    let tooltip = "Attach text file";
+    
+    if (supportsImage && supportsPdf) {
+      tooltip = "Attach text, image, or PDF file";
+    } else if (supportsImage) {
+      tooltip = "Attach text or image file";
+    } else if (supportsPdf) {
+      tooltip = "Attach text or PDF file";
+    }
+    
+    return tooltip;
+  };// Generate accepted file types based on selected model capabilities
+  const getAcceptedFileTypes = () => {
+    if (!selectedModel) return ".txt,.md,image/*,.pdf";
+    
+    const supportsImage = selectedModel.supportsImage || selectedModel.capabilities?.image;
+    const supportsPdf = selectedModel.supportsPdf || selectedModel.capabilities?.pdf;
+    
+    // Always include text files since all models support text
+    let acceptedTypes = ".txt,.md";
+    
+    if (supportsImage) {
+      acceptedTypes += ",image/*";
+    }
+    
+    if (supportsPdf) {
+      acceptedTypes += ",.pdf";
+    }
+    
+    return acceptedTypes;
+  };
+  
+  // Should show file upload button only if the selected model supports files
+  const shouldShowFileUpload = showFileUpload && selectedModelSupportsFiles;// Check if current file type is supported by the selected model
   useEffect(() => {
-    if (selectedFile && llmCapabilities.length > 0) {
+    if (selectedFile && selectedModel) {
       const fileType = selectedFile.type.startsWith('image/') ? 'image' : 
-                      (selectedFile.type === 'application/pdf' ? 'pdf' : 'unknown');
+                      (selectedFile.type === 'application/pdf' ? 'pdf' : 
+                       (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md')) ? 'text' : 'unknown');
       
-      // Check if any LLM supports this file type
-      const supportedLlms = llmCapabilities.filter(llm => {
-        // Handle different property structures that might come from the backend
-        if (fileType === 'image') {
-          return llm.supportsImage || llm.capabilities?.image;
-        }
-        if (fileType === 'pdf') {
-          return llm.supportsPdf || llm.capabilities?.pdf;
-        }
-        return false;
-      });
+      // Check if the selected model supports this file type
+      let isSupported = false;
+      if (fileType === 'text') {
+        isSupported = true; // All models support text files
+      } else if (fileType === 'image') {
+        isSupported = selectedModel.supportsImage || selectedModel.capabilities?.image;
+      } else if (fileType === 'pdf') {
+        isSupported = selectedModel.supportsPdf || selectedModel.capabilities?.pdf;
+      }
       
-      if (supportedLlms.length === 0) {
+      if (!isSupported && fileType !== 'unknown') {
         setShowCapabilityWarning(true);
-        setCapabilityWarningMessage(`Warning: No available LLM supports ${fileType === 'image' ? 'images' : 'PDF files'}.`);
+        setCapabilityWarningMessage(`Warning: The selected model "${selectedModel.name || selectedModel.id}" does not support ${fileType === 'image' ? 'images' : 'PDF files'}.`);
       } else if (fileType === 'unknown') {
         setShowCapabilityWarning(true);
-        setCapabilityWarningMessage('Warning: Unsupported file type. Please use images (JPEG, PNG) or PDF files.');
+        setCapabilityWarningMessage('Warning: Unsupported file type. Please use text files (.txt, .md), images (JPEG, PNG), or PDF files.');
       } else {
         setShowCapabilityWarning(false);
         setCapabilityWarningMessage('');
@@ -51,7 +93,7 @@ function UserInput({
       setShowCapabilityWarning(false);
       setCapabilityWarningMessage('');
     }
-  }, [selectedFile, llmCapabilities]);
+  }, [selectedFile, selectedModel]);
 
   const handleInputResize = (e) => {
     e.target.style.height = 'auto';
@@ -95,13 +137,17 @@ function UserInput({
         <div className="capability-warning">
           {capabilityWarningMessage}
         </div>
+      )}      {!shouldShowFileUpload && selectedModel && (
+        <div className="model-limitation-hint" title={`The selected model "${selectedModel.name || selectedModel.id}" only supports text conversations`}>
+          <span className="text-only-indicator">T</span>
+        </div>
       )}
       
-      {showFileUpload && (
+      {shouldShowFileUpload && (
         <button 
           className={`attachment-button ${isFileUploadVisible || selectedFile ? 'active' : ''}`} 
           onClick={toggleFileUpload}
-          title="Attach image or PDF"
+          title={getFileUploadTooltip()}
           disabled={isLoading}
         >
           <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
@@ -125,12 +171,11 @@ function UserInput({
         title="Open settings"
       >
         ⚙
-      </button>
-      
-      {showFileUpload && isFileUploadVisible && (        <div className="file-upload-wrapper">
+      </button>      {shouldShowFileUpload && isFileUploadVisible && (
+        <div className="file-upload-wrapper">
           <FileUpload
             onFileSelect={handleFileSelect}
-            acceptedFileTypes="image/*,.pdf"
+            acceptedFileTypes={getAcceptedFileTypes()}
             disabled={isLoading}
             selectedFile={selectedFile}
           />

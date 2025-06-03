@@ -1,0 +1,131 @@
+/* Model Selector Component Styles */
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 15px;
+}
+
+.model-label {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  white-space: nowrap;
+  margin-right: 5px;
+}
+
+.model-select {
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 5px;
+  color: #e0e0e0;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  min-width: 140px;
+  outline: none;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.model-select:hover:not(:disabled) {
+  border-color: #4a00e0;
+  background-color: #333;
+}
+
+.model-select:focus {
+  border-color: #4a00e0;
+  background-color: #333;
+  box-shadow: 0 0 0 2px rgba(74, 0, 224, 0.2);
+}
+
+.model-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #1a1a1a;
+}
+
+.model-select option {
+  background-color: #2a2a2a;
+  color: #e0e0e0;
+  padding: 8px;
+}
+
+.model-capabilities {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+}
+
+.capability-icon {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1;
+}
+
+.capability-icon:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.capability-icon.text {
+  background-color: rgba(74, 0, 224, 0.2);
+  border-color: rgba(74, 0, 224, 0.4);
+  color: #8a7fff;
+}
+
+.capability-icon.image {
+  background-color: rgba(255, 107, 107, 0.2);
+  border-color: rgba(255, 107, 107, 0.4);
+  color: #ff9999;
+}
+
+.capability-icon.pdf {
+  background-color: rgba(81, 207, 102, 0.2);
+  border-color: rgba(81, 207, 102, 0.4);
+  color: #88e5a8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .model-selector {
+    margin-right: 10px;
+  }
+  
+  .model-label {
+    display: none; /* Hide label on mobile to save space */
+  }
+  
+  .model-select {
+    min-width: 120px;
+    font-size: 0.85rem;
+    padding: 5px 10px;
+  }
+    .capability-icon {
+    font-size: 0.65rem;
+    padding: 1px 3px;
+    min-width: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .model-selector {
+    margin-right: 5px;
+  }
+  
+  .model-select {
+    min-width: 100px;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+  }
+  
+  .model-capabilities {
+    gap: 2px;
+  }
+}
