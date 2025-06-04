@@ -50,6 +50,8 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
     !(isFromHistory && content && content.length >= 250)
   );
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [toolCallStatus, setToolCallStatus] = useState(''); // New state for tool call status
+  const [processedContent, setProcessedContent] = useState(content); // New state for processed content
 
   const messageCardRef = useRef(null);
   const messageContentRef = useRef(null);
@@ -72,7 +74,80 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
     } else {
       setShowScrollToTop(false);
     }
-  }, [isExpanded, content]); // Re-check when content changes or expansion state changes
+  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes
+
+  // Effect to process content for tool calls
+  useEffect(() => {
+    if (role === 'ai' && typeof content === 'string') {
+      let currentContent = content;
+      let newToolCallStatus = '';
+      let finalProcessedContent = '';
+
+      const toolMessageRegex = /^\\\[([^\]]+)\\]/; // Matches a single [...] message at the start
+
+      while (true) {
+        const match = currentContent.match(toolMessageRegex);
+        if (match) {
+          const statusPart = match[1]; // Content inside [...]
+
+          if (statusPart.startsWith('Continuing conversation with tool results...')) {
+            newToolCallStatus = ''; // Clear status, conversation continues
+            finalProcessedContent = ''; 
+            currentContent = currentContent.substring(match[0].length).trim();
+            // If there's more content immediately after "Continuing...", process it.
+            if (!currentContent.match(toolMessageRegex)) { 
+               finalProcessedContent = currentContent;
+            }
+            break; 
+          } else if (statusPart === 'Tool completed successfully') {
+            // If there was a specific tool name in status, keep it and append "Done"
+            if (newToolCallStatus.startsWith('Executing:') || newToolCallStatus.startsWith('Calling tool:')) {
+              const baseStatus = newToolCallStatus.split(' -> ')[0]; // Get "Executing: tool" or "Calling tool: tool"
+              newToolCallStatus = `${baseStatus} -> Done`;
+            } else {
+              newToolCallStatus = 'Tool completed successfully';
+            }
+          } else if (statusPart.startsWith('Executing:')) {
+            newToolCallStatus = statusPart; // e.g., "Executing: crawlWithMarkdown"
+          } else if (statusPart === 'Executing tools...') {
+            if (newToolCallStatus.startsWith('Calling tool:')) {
+              // Append to "Calling tool: name" status, avoid multiple "Executing" parts
+              const baseStatus = newToolCallStatus.split(' -> ')[0];
+              if (!newToolCallStatus.includes('Executing')) {
+                   newToolCallStatus = `${baseStatus} -> Executing tools...`;
+              }
+            } else if (!newToolCallStatus.startsWith('Executing:')) {
+              // Only set if not already in a more specific "Executing: tool_name" state
+              newToolCallStatus = statusPart;
+            }
+          } else if (statusPart.startsWith('Calling tool:')) {
+            newToolCallStatus = statusPart; // e.g., "Calling tool: crawlWithMarkdown"
+          } else {
+            // For other unhandled generic status messages, if no specific status is set, display it.
+            if (!newToolCallStatus) {
+              newToolCallStatus = statusPart;
+            }
+          }
+
+          currentContent = currentContent.substring(match[0].length).trim();
+          if (currentContent === "") { 
+            finalProcessedContent = ""; 
+            break;
+          }
+        } else {
+          // No more [...] messages at the start of currentContent
+          finalProcessedContent = currentContent;
+          break;
+        }
+      }
+      setToolCallStatus(newToolCallStatus);
+      setProcessedContent(finalProcessedContent);
+
+    } else {
+      setToolCallStatus('');
+      setProcessedContent(content); // Handle non-string or non-AI messages
+    }
+  }, [content, role]);
 
   const handleScrollToMessageTop = () => {
     messageCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -87,8 +162,8 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
         {role === 'ai' && <AiRoleIcon />}
         {role === 'system' && <ErrorRoleIcon />}
         
-        {content && content.length >= 250 && (
-          <button 
+        {processedContent && processedContent.length >= 250 && (
+          <button
             onClick={toggleExpand} 
             className="message-collapse-button" 
             aria-expanded={isExpanded}
@@ -105,12 +180,13 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
           {fileAttachment && (
             <FileAttachment file={fileAttachment.file} previewUrl={fileAttachment.previewUrl} />
           )}
-          <ContentRenderer content={content} isTyping={isTyping} />
+          {toolCallStatus && <div className="tool-call-status">Tool Status: {toolCallStatus}</div>}
+          <ContentRenderer content={processedContent} isTyping={isTyping && !toolCallStatus} />
         </div>
       )}
-      {!isExpanded && content && (
+      {!isExpanded && processedContent && (
         <div className="message-content-preview">
-          {`${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`}
+          {`${processedContent.substring(0, 50)}${processedContent.length > 50 ? '...' : ''}`}
         </div>
       )}
       {timestamp && (
