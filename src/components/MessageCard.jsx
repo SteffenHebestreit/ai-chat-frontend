@@ -75,77 +75,82 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
       setShowScrollToTop(false);
     }
   }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes
-
   // Effect to process content for tool calls
   useEffect(() => {
-    if (role === 'ai' && typeof content === 'string') {
-      let currentContent = content;
-      let newToolCallStatus = '';
-      let finalProcessedContent = '';
+    if (role === 'ai') {
+      // For AI messages, check if it's a string that might contain tool call status
+      if (typeof content === 'string') {
+        let currentContent = content;
+        let newToolCallStatus = '';
+        let finalProcessedContent = '';
+        const toolMessageRegex = /^\[([^\]]+)\]/; // Matches a single [...] message at the start
 
-      const toolMessageRegex = /^\\\[([^\]]+)\\]/; // Matches a single [...] message at the start
+        while (true) {
+          const match = currentContent.match(toolMessageRegex);
+          if (match) {
+            const statusPart = match[1]; // Content inside [...]
 
-      while (true) {
-        const match = currentContent.match(toolMessageRegex);
-        if (match) {
-          const statusPart = match[1]; // Content inside [...]
-
-          if (statusPart.startsWith('Continuing conversation with tool results...')) {
-            newToolCallStatus = ''; // Clear status, conversation continues
-            finalProcessedContent = ''; 
-            currentContent = currentContent.substring(match[0].length).trim();
-            // If there's more content immediately after "Continuing...", process it.
-            if (!currentContent.match(toolMessageRegex)) { 
-               finalProcessedContent = currentContent;
-            }
-            break; 
-          } else if (statusPart === 'Tool completed successfully') {
-            // If there was a specific tool name in status, keep it and append "Done"
-            if (newToolCallStatus.startsWith('Executing:') || newToolCallStatus.startsWith('Calling tool:')) {
-              const baseStatus = newToolCallStatus.split(' -> ')[0]; // Get "Executing: tool" or "Calling tool: tool"
-              newToolCallStatus = `${baseStatus} -> Done`;
-            } else {
-              newToolCallStatus = 'Tool completed successfully';
-            }
-          } else if (statusPart.startsWith('Executing:')) {
-            newToolCallStatus = statusPart; // e.g., "Executing: crawlWithMarkdown"
-          } else if (statusPart === 'Executing tools...') {
-            if (newToolCallStatus.startsWith('Calling tool:')) {
-              // Append to "Calling tool: name" status, avoid multiple "Executing" parts
-              const baseStatus = newToolCallStatus.split(' -> ')[0];
-              if (!newToolCallStatus.includes('Executing')) {
-                   newToolCallStatus = `${baseStatus} -> Executing tools...`;
+            if (statusPart.startsWith('Continuing conversation with tool results...')) {
+              newToolCallStatus = ''; // Clear status, conversation continues
+              finalProcessedContent = ''; 
+              currentContent = currentContent.substring(match[0].length).trim();
+              // If there's more content immediately after "Continuing...", process it.
+              if (!currentContent.match(toolMessageRegex)) { 
+                 finalProcessedContent = currentContent;
               }
-            } else if (!newToolCallStatus.startsWith('Executing:')) {
-              // Only set if not already in a more specific "Executing: tool_name" state
-              newToolCallStatus = statusPart;
+              break; 
+            } else if (statusPart === 'Tool completed successfully') {
+              // If there was a specific tool name in status, keep it and append "Done"
+              if (newToolCallStatus.startsWith('Executing:') || newToolCallStatus.startsWith('Calling tool:')) {
+                const baseStatus = newToolCallStatus.split(' -> ')[0]; // Get "Executing: tool" or "Calling tool: tool"
+                newToolCallStatus = `${baseStatus} -> Done`;
+              } else {
+                newToolCallStatus = 'Tool completed successfully';
+              }
+            } else if (statusPart.startsWith('Executing:')) {
+              newToolCallStatus = statusPart; // e.g., "Executing: crawlWithMarkdown"
+            } else if (statusPart === 'Executing tools...') {
+              if (newToolCallStatus.startsWith('Calling tool:')) {
+                // Append to "Calling tool: name" status, avoid multiple "Executing" parts
+                const baseStatus = newToolCallStatus.split(' -> ')[0];
+                if (!newToolCallStatus.includes('Executing')) {
+                     newToolCallStatus = `${baseStatus} -> Executing tools...`;
+                }
+              } else if (!newToolCallStatus.startsWith('Executing:')) {
+                // Only set if not already in a more specific "Executing: tool_name" state
+                newToolCallStatus = statusPart;
+              }
+            } else if (statusPart.startsWith('Calling tool:')) {
+              newToolCallStatus = statusPart; // e.g., "Calling tool: crawlWithMarkdown"
+            } else {
+              // For other unhandled generic status messages, if no specific status is set, display it.
+              if (!newToolCallStatus) {
+                newToolCallStatus = statusPart;
+              }
             }
-          } else if (statusPart.startsWith('Calling tool:')) {
-            newToolCallStatus = statusPart; // e.g., "Calling tool: crawlWithMarkdown"
-          } else {
-            // For other unhandled generic status messages, if no specific status is set, display it.
-            if (!newToolCallStatus) {
-              newToolCallStatus = statusPart;
-            }
-          }
 
-          currentContent = currentContent.substring(match[0].length).trim();
-          if (currentContent === "") { 
-            finalProcessedContent = ""; 
+            currentContent = currentContent.substring(match[0].length).trim();
+            if (currentContent === "") { 
+              finalProcessedContent = ""; 
+              break;
+            }
+          } else {
+            // No more [...] messages at the start of currentContent
+            finalProcessedContent = currentContent;
             break;
           }
-        } else {
-          // No more [...] messages at the start of currentContent
-          finalProcessedContent = currentContent;
-          break;
         }
+        setToolCallStatus(newToolCallStatus);
+        setProcessedContent(finalProcessedContent);
+      } else {
+        // For non-string AI content (like multimodal content), pass through without tool status processing
+        setToolCallStatus('');
+        setProcessedContent(content);
       }
-      setToolCallStatus(newToolCallStatus);
-      setProcessedContent(finalProcessedContent);
-
     } else {
+      // For non-AI messages, pass content through without any processing
       setToolCallStatus('');
-      setProcessedContent(content); // Handle non-string or non-AI messages
+      setProcessedContent(content);
     }
   }, [content, role]);
 
