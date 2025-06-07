@@ -45,16 +45,48 @@ const ExpandIcon = ({ className }) => (
 );
 
 
-function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAttachment }) {
+function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAttachment, onOrbStateChange }) {
   const [isExpanded, setIsExpanded] = useState(
     !(isFromHistory && content && content.length >= 250)
   );
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [toolCallStatus, setToolCallStatus] = useState(''); // New state for tool call status
+  const [toolCallStatuses, setToolCallStatuses] = useState([]); // New state for tool call statuses array
+  const [showToolDropdown, setShowToolDropdown] = useState(false); // New state for dropdown visibility
   const [processedContent, setProcessedContent] = useState(content); // New state for processed content
 
   const messageCardRef = useRef(null);
   const messageContentRef = useRef(null);
+
+  // Function to detect error content
+  const detectErrorContent = (content) => {
+    if (typeof content !== 'string') return false;
+    
+    // Try to parse as JSON to detect error objects
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && parsed.error) {
+        return true;
+      }
+    } catch (e) {
+      // Not valid JSON, check for other error patterns
+    }
+    
+    // Check for common error patterns in text
+    const errorPatterns = [
+      /connection\s+timed?\s+out/i,
+      /error\s+processing/i,
+      /getsockopt/i,
+      /connection\s+refused/i,
+      /network\s+error/i,
+      /timeout/i,
+      /failed\s+to\s+connect/i,
+      /server\s+error/i,
+      /internal\s+server\s+error/i
+    ];
+    
+    return errorPatterns.some(pattern => pattern.test(content));
+  };
 
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
@@ -74,85 +106,134 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
     } else {
       setShowScrollToTop(false);
     }
-  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes
-  // Effect to process content for tool calls
+  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes  // Effect to process content for tool calls
   useEffect(() => {
     if (role === 'ai') {
       // For AI messages, check if it's a string that might contain tool call status
       if (typeof content === 'string') {
-        let currentContent = content;
-        let newToolCallStatus = '';
-        let finalProcessedContent = '';
-        const toolMessageRegex = /^\[([^\]]+)\]/; // Matches a single [...] message at the start
-
-        while (true) {
-          const match = currentContent.match(toolMessageRegex);
-          if (match) {
-            const statusPart = match[1]; // Content inside [...]
-
-            if (statusPart.startsWith('Continuing conversation with tool results...')) {
-              newToolCallStatus = ''; // Clear status, conversation continues
-              finalProcessedContent = ''; 
-              currentContent = currentContent.substring(match[0].length).trim();
-              // If there's more content immediately after "Continuing...", process it.
-              if (!currentContent.match(toolMessageRegex)) { 
-                 finalProcessedContent = currentContent;
+        // Function to extract tool calls with proper bracket matching
+        const extractToolCalls = (text) => {
+          const toolCallMatches = [];
+          const toolCallStartPatterns = [
+            'Calling tool', 'Executing tools?', 'Tool execution', 'Tool result', 
+            'Tool error', 'Tool failed', 'Tool execution failed', 'Tool completed successfully',
+            'Continuing conversation', 'Step [0-9]+', 'Using tool', 'Task complete', 
+            'Task started', 'Processing', 'Tool thinking', 'Tool output', 'Result', 
+            'Executing', 'Tool execution continues'
+          ];
+          
+          const startPattern = new RegExp(`\\[(?:${toolCallStartPatterns.join('|')})`, 'g');
+          let match;
+          
+          while ((match = startPattern.exec(text)) !== null) {
+            const startIndex = match.index;
+            let bracketCount = 1;
+            let endIndex = match.index + match[0].length;
+            
+            // Find the matching closing bracket, handling nested brackets
+            while (endIndex < text.length && bracketCount > 0) {
+              const char = text[endIndex];
+              if (char === '[') {
+                bracketCount++;
+              } else if (char === ']') {
+                bracketCount--;
               }
-              break; 
-            } else if (statusPart === 'Tool completed successfully') {
-              // If there was a specific tool name in status, keep it and append "Done"
-              if (newToolCallStatus.startsWith('Executing:') || newToolCallStatus.startsWith('Calling tool:')) {
-                const baseStatus = newToolCallStatus.split(' -> ')[0]; // Get "Executing: tool" or "Calling tool: tool"
-                newToolCallStatus = `${baseStatus} -> Done`;
-              } else {
-                newToolCallStatus = 'Tool completed successfully';
-              }
-            } else if (statusPart.startsWith('Executing:')) {
-              newToolCallStatus = statusPart; // e.g., "Executing: crawlWithMarkdown"
-            } else if (statusPart === 'Executing tools...') {
-              if (newToolCallStatus.startsWith('Calling tool:')) {
-                // Append to "Calling tool: name" status, avoid multiple "Executing" parts
-                const baseStatus = newToolCallStatus.split(' -> ')[0];
-                if (!newToolCallStatus.includes('Executing')) {
-                     newToolCallStatus = `${baseStatus} -> Executing tools...`;
-                }
-              } else if (!newToolCallStatus.startsWith('Executing:')) {
-                // Only set if not already in a more specific "Executing: tool_name" state
-                newToolCallStatus = statusPart;
-              }
-            } else if (statusPart.startsWith('Calling tool:')) {
-              newToolCallStatus = statusPart; // e.g., "Calling tool: crawlWithMarkdown"
-            } else {
-              // For other unhandled generic status messages, if no specific status is set, display it.
-              if (!newToolCallStatus) {
-                newToolCallStatus = statusPart;
-              }
+              endIndex++;
             }
-
-            currentContent = currentContent.substring(match[0].length).trim();
-            if (currentContent === "") { 
-              finalProcessedContent = ""; 
-              break;
+            
+            if (bracketCount === 0) {
+              const fullMatch = text.substring(startIndex, endIndex);
+              toolCallMatches.push(fullMatch);
             }
-          } else {
-            // No more [...] messages at the start of currentContent
-            finalProcessedContent = currentContent;
-            break;
           }
+          
+          return toolCallMatches;
+        };
+        
+        // Extract tool calls using the improved function
+        const matches = extractToolCalls(content);        if (matches && matches.length > 0) {
+          // Store all tool call statuses for dropdown in chronological order with deduplication
+          const statuses = matches.map(match => match.slice(1, -1)); // Remove brackets
+          
+          // Deduplicate consecutive identical tool calls
+          const deduplicatedStatuses = [];
+          for (let i = 0; i < statuses.length; i++) {
+            // Only add if it's different from the previous status
+            if (i === 0 || statuses[i] !== statuses[i - 1]) {
+              deduplicatedStatuses.push(statuses[i]);
+            }
+          }
+          
+          setToolCallStatuses(deduplicatedStatuses);
+          
+          // Get the last/most recent tool status for main display
+          const lastMatch = matches[matches.length - 1];
+          setToolCallStatus(lastMatch.slice(1, -1)); // Remove brackets
+          
+          // Remove tool calls from the main content to avoid duplication
+          let contentWithoutToolCalls = content;
+          matches.forEach(match => {
+            contentWithoutToolCalls = contentWithoutToolCalls.replace(match, '');
+          });
+          contentWithoutToolCalls = contentWithoutToolCalls.trim();
+          setProcessedContent(contentWithoutToolCalls);
+        } else {
+          setToolCallStatuses([]);
+          setToolCallStatus('');
+          setProcessedContent(content);
         }
-        setToolCallStatus(newToolCallStatus);
-        setProcessedContent(finalProcessedContent);
       } else {
         // For non-string AI content (like multimodal content), pass through without tool status processing
+        setToolCallStatuses([]);
         setToolCallStatus('');
         setProcessedContent(content);
       }
     } else {
       // For non-AI messages, pass content through without any processing
+      setToolCallStatuses([]);
       setToolCallStatus('');
       setProcessedContent(content);
     }
   }, [content, role]);
+  // Effect to detect error content and trigger orb state change
+  useEffect(() => {
+    if (onOrbStateChange && detectErrorContent(processedContent)) {
+      onOrbStateChange('criticalError');
+    }
+  }, [processedContent, onOrbStateChange]);
+  // Effect to set orb to activity state when tool calls are active
+  useEffect(() => {
+    if (onOrbStateChange && toolCallStatus && role === 'ai') {
+      // Check if the tool call indicates active processing (not completed)
+      const activeToolPatterns = [
+        /calling tool/i,
+        /executing/i,
+        /tool execution/i,
+        /processing/i,
+        /tool thinking/i,
+        /using tool/i,
+        /task started/i,
+        /step \d+/i
+      ];
+      
+      const completedToolPatterns = [
+        /tool completed successfully/i,
+        /tool result/i,
+        /task complete/i,
+        /continuing conversation/i
+      ];
+      
+      const isActiveToolCall = activeToolPatterns.some(pattern => pattern.test(toolCallStatus));
+      const isCompletedToolCall = completedToolPatterns.some(pattern => pattern.test(toolCallStatus));
+      
+      if (isActiveToolCall && !isCompletedToolCall) {
+        onOrbStateChange('activity');
+      } else if (isCompletedToolCall) {
+        // Tool call has completed, transition to success state
+        onOrbStateChange('output');
+      }
+    }
+  }, [toolCallStatus, onOrbStateChange, role]);
 
   const handleScrollToMessageTop = () => {
     messageCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -184,8 +265,30 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
         <div ref={messageContentRef} className="message-content">
           {fileAttachment && (
             <FileAttachment file={fileAttachment.file} previewUrl={fileAttachment.previewUrl} />
+          )}          {toolCallStatus && (
+            <div className="tool-call-status-container">
+              <div 
+                className="tool-call-status"
+                onClick={() => toolCallStatuses.length > 1 && setShowToolDropdown(!showToolDropdown)}
+                style={{ cursor: toolCallStatuses.length > 1 ? 'pointer' : 'default' }}
+              >
+                Tool Progress: {toolCallStatus}
+                {toolCallStatuses.length > 1 && (
+                  <span className="dropdown-arrow">{showToolDropdown ? ' ▼' : ' ▶'}</span>
+                )}
+              </div>
+              {showToolDropdown && toolCallStatuses.length > 1 && (
+                <div className="tool-dropdown">
+                  <div className="tool-dropdown-header">Chronological Tool Execution:</div>
+                  {toolCallStatuses.map((status, index) => (
+                    <div key={index} className="tool-dropdown-item">
+                      <span className="tool-step">Step {index + 1}:</span> {status}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-          {toolCallStatus && <div className="tool-call-status">Tool Status: {toolCallStatus}</div>}
           <ContentRenderer content={processedContent} isTyping={isTyping && !toolCallStatus} />
         </div>
       )}

@@ -139,6 +139,7 @@ The main application component with enhanced model management and multimodal mes
     *   Integrates dynamic model selection with chat functionality
     *   Manages separate streaming logic for text vs. multimodal content
     *   Provides automatic model fallback for unsupported file types
+    *   **Performance Optimizations**: Enhanced with `useCallback` hooks for better memory management and reduced re-renders
 
 ### `ModelSelector.jsx` *(NEW)*
 Dynamic model selection dropdown with capability visualization.
@@ -169,6 +170,7 @@ A Three.js component responsible for rendering a dynamic 3D orb visualization in
     *   Creates a particle-based sphere that animates.
     *   Responds to mouse movements for interactive effects.
     *   Its appearance (e.g., color, particle density) can be configured.
+    *   **Enhanced Animations**: Smoothed state transitions with reduced speed and intensity for better visual experience
 *   **Note**: There has been an intermittent "THREE.WebGLRenderer: Context Lost" error. If this persists, further investigation into particle counts, resource management, or WebGL context handling within this component may be needed.
 
 ### `ChatHistoryPanel.jsx`
@@ -185,6 +187,8 @@ Renders individual chat messages, distinguishing between user and AI messages.
     *   Displays message content, sender (User/AI), and timestamp.
     *   Supports rendering of markdown content within messages.
     *   Applies distinct styling for user and AI messages, including a glowing border effect.
+    *   **Enhanced Tool Call Visualization**: Expandable dropdown showing chronological tool execution steps with improved visual feedback
+    *   **Error Detection**: Automatic detection of error content with orb state change triggers
 
 ### `UserInput.jsx`
 Handles user text input and message sending, now enhanced with multimodal file upload capabilities.
@@ -220,6 +224,7 @@ Enhanced content renderer supporting multimodal content and thinking sections.
     *   Supports collapsible "thinking" sections for AI reasoning display.
     *   Maintains markdown rendering capabilities.
     *   Handles mixed content types within single messages.
+    *   **Enhanced HTML Rendering**: Integrated with `rehype-raw` plugin for safe HTML content processing
 
 ### `pages/SettingsView/SettingsView.jsx`
 A component intended for application settings.
@@ -256,6 +261,7 @@ Provides configuration for the backend API URL.
 *   **`axios`**: Promise-based HTTP client for making API requests to the backend.
 *   **`react-markdown`**: Component to render Markdown text as HTML. Used in `MessageCard.js`.
 *   **`remark-gfm`**: Plugin for `react-markdown` to support GitHub Flavored Markdown (tables, strikethrough, etc.).
+*   **`rehype-raw`**: Plugin for `react-markdown` to safely render raw HTML content within markdown. **(NEW)**
 *   **`react-router-dom`**: For handling routing within the application (though minimally used currently).
 *   **`@testing-library/react`**: Utilities for testing React components.
 
@@ -272,6 +278,23 @@ Launches the test runner (Vitest, if configured). *Note: Test setup might need a
 
 ### `npm run preview` or `vite preview`
 Serves the production build locally to preview it before deployment.
+
+## Recent Updates
+
+### Latest Improvements (Current Version)
+*   **Performance Optimization**: Added `useCallback` hooks in `App.jsx` for better memory management and reduced re-renders
+*   **Enhanced Markdown Processing**: Integrated `rehype-raw` plugin to safely render HTML within markdown content
+*   **Improved Tool Call Visualization**: Enhanced `MessageCard` with expandable dropdown showing chronological tool execution steps
+*   **Visual Enhancements**: Updated styling for tool call status with better colors, borders, and hover effects
+*   **Animation Improvements**: Smoothed orb transitions in `Orb.jsx` with reduced speed and intensity
+*   **Error Detection**: Added automatic error content detection with orb state change triggers
+*   **Code Cleanup**: Removed unused functions and improved component organization
+
+### Technical Enhancements
+*   **New Dependency**: Added `rehype-raw@7.0.0` for enhanced HTML rendering in React Markdown
+*   **Performance**: Wrapped event handlers and state setters in `useCallback` to prevent unnecessary re-renders
+*   **UX Improvements**: Created expandable tool call status indicators with chronological execution display
+*   **Error Handling**: Enhanced error detection with automatic visual feedback through orb state changes
 
 ## Learn More
 

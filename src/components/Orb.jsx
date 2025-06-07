@@ -64,10 +64,10 @@ const NEURAL_SPHERE_ROTATION_SPEED = 0.41; // Radians per second for Y-axis rota
 
 const TRANSITION_DURATION = 1.37; // Seconds for state transitions (Increased from 1.1)
 
-// AI State Modifiers - Enhanced for brightness
+// AI State Modifiers - Smoother transitions with reduced speed and intensity
 const AI_STATE_MODIFIERS = {
   default: { 
-    portalSpeedFactor: 0.4, pulseSpeedFactor: 0.8, pulseRateFactor: 0.2, 
+    portalSpeedFactor: 0.3, pulseSpeedFactor: 0.6, pulseRateFactor: 0.15, 
     particleOpacity: BASE_PARTICLE_OPACITY, 
     // Null overrides use the enhanced base colors defined earlier
     pulseColorOverride: null, portalColorNearOverride: null, portalColorFarOverride: null,
@@ -77,68 +77,68 @@ const AI_STATE_MODIFIERS = {
     frozenAnimation: true // Animation continues
   },
   activity: { 
-    portalSpeedFactor: 1.3, // Increased from 1.2
-    pulseSpeedFactor: 1.4, // Increased from 1.2
-    pulseRateFactor: 1.8, // Increased from 1.5 for more activity
-    particleOpacity: BASE_PARTICLE_OPACITY + 0.1, // Using new higher base opacity
+    portalSpeedFactor: 0.8, // Reduced from 1.3 for smoother transition
+    pulseSpeedFactor: 0.9, // Reduced from 1.4 for smoother pulsing
+    pulseRateFactor: 1.2, // Reduced from 1.8 for gentler activity
+    particleOpacity: BASE_PARTICLE_OPACITY + 0.05, // Reduced opacity change for smoother transition
     // Enhanced bright colors with multiplyScalar for more luminosity
-    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.2), // Super bright white pulses
-    portalColorNearOverride: new THREE.Color(0xffff33).multiplyScalar(1.3), // Brighter yellow
-    portalColorFarOverride: new THREE.Color(0xffaa00).multiplyScalar(1.2), // Brighter orange-yellow
-    neuralSphereColor: NEURAL_SPHERE_ACTIVITY_COLOR.clone().multiplyScalar(1.2), // Even brighter neural sphere
+    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.1), // Slightly reduced brightness
+    portalColorNearOverride: new THREE.Color(0xffff33).multiplyScalar(1.2), // Reduced brightness
+    portalColorFarOverride: new THREE.Color(0xffaa00).multiplyScalar(1.1), // Reduced brightness
+    neuralSphereColor: NEURAL_SPHERE_ACTIVITY_COLOR.clone().multiplyScalar(1.1), // Slightly reduced brightness
     neuralSphereOpacity: NEURAL_SPHERE_ACTIVITY_OPACITY,
-    neuralSpherePulseAmount: NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT,
+    neuralSpherePulseAmount: NEURAL_SPHERE_ACTIVITY_PULSE_AMOUNT * 0.8, // Reduced pulse intensity
     pulsesFromCenter: false, // Default pulse origin behavior
     neuralSphereScale: 1.0, // Default scale
     frozenAnimation: false // Animation continues
   },
   // New state: AI is outputting data
   output: {
-    portalSpeedFactor: 1.4, // Faster than activity
-    pulseSpeedFactor: 1.6, // Faster pulses
-    pulseRateFactor: 2.0, // More frequent pulses
-    particleOpacity: BASE_PARTICLE_OPACITY + 0.15, // Higher opacity for more visibility
+    portalSpeedFactor: 0.9, // Reduced from 1.4 for smoother transition
+    pulseSpeedFactor: 1.0, // Reduced from 1.6 for gentler pulses
+    pulseRateFactor: 1.4, // Reduced from 2.0 for smoother pulse frequency
+    particleOpacity: BASE_PARTICLE_OPACITY + 0.08, // Reduced opacity change
     // Green-themed colors for output state
-    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.4), // Bright green pulses
-    portalColorNearOverride: new THREE.Color(0x00ffaa).multiplyScalar(1.4), // Bright teal near
-    portalColorFarOverride: new THREE.Color(0x00aa44).multiplyScalar(1.3), // Deeper green far
+    pulseColorOverride: new THREE.Color(0xffffff).multiplyScalar(1.2), // Reduced brightness
+    portalColorNearOverride: new THREE.Color(0x00ffaa).multiplyScalar(1.2), // Reduced brightness
+    portalColorFarOverride: new THREE.Color(0x00aa44).multiplyScalar(1.1), // Reduced brightness
     neuralSphereColor: NEURAL_SPHERE_OUTPUT_COLOR,
     neuralSphereOpacity: NEURAL_SPHERE_OUTPUT_OPACITY,
-    neuralSpherePulseAmount: NEURAL_SPHERE_OUTPUT_PULSE_AMOUNT,
+    neuralSpherePulseAmount: NEURAL_SPHERE_OUTPUT_PULSE_AMOUNT * 0.8, // Reduced pulse intensity
     pulsesFromCenter: true, // Pulses originate from center/sphere
-    neuralSphereScale: 1.05, // Slightly larger sphere during output
+    neuralSphereScale: 1.02, // Reduced scale change for smoother transition
     frozenAnimation: false // Animation continues
   },
   // Enhanced error state
   error: { 
-    portalSpeedFactor: 0.3, pulseSpeedFactor: 0.2, pulseRateFactor: 0.1, 
-    particleOpacity: BASE_PARTICLE_OPACITY - 0.2, // Less opacity reduction since base is higher
+    portalSpeedFactor: 0.25, pulseSpeedFactor: 0.18, pulseRateFactor: 0.08, 
+    particleOpacity: BASE_PARTICLE_OPACITY - 0.15, // Reduced opacity change
     // Enhanced error colors
-    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.4), // Brighter red pulses
-    portalColorNearOverride: new THREE.Color(0x8B0000).multiplyScalar(1.2), // Brighter dark red
-    portalColorFarOverride: new THREE.Color(0x3d0000).multiplyScalar(1.1), // Slightly brighter deep red
+    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.2), // Reduced brightness
+    portalColorNearOverride: new THREE.Color(0x8B0000).multiplyScalar(1.1), // Reduced brightness
+    portalColorFarOverride: new THREE.Color(0x3d0000).multiplyScalar(1.05), // Reduced brightness
     neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR,
     neuralSphereOpacity: NEURAL_SPHERE_ERROR_OPACITY,
-    neuralSpherePulseAmount: NEURAL_SPHERE_ERROR_PULSE_AMOUNT,
+    neuralSpherePulseAmount: NEURAL_SPHERE_ERROR_PULSE_AMOUNT * 0.8, // Reduced pulse intensity
     pulsesFromCenter: false, // Default pulse origin behavior
     neuralSphereScale: 1.0, // Default scale (we'll handle special error expansion separately)
     frozenAnimation: false // Animation continues
   },
   // Special severe error state with expanded particles and frozen sphere
   criticalError: {
-    portalSpeedFactor: 0.1, // Very slow portal movement
-    pulseSpeedFactor: 0.05, // Almost no pulse movement
-    pulseRateFactor: 0.05, // Very few pulses
+    portalSpeedFactor: 0.08, // Slightly increased from 0.1 for smoother transition
+    pulseSpeedFactor: 0.04, // Slightly reduced for smoother effect
+    pulseRateFactor: 0.04, // Slightly reduced for smoother effect
     particleOpacity: BASE_PARTICLE_OPACITY, // Full opacity for error state
     // Intense red colors
-    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.6), // Very bright red pulses
-    portalColorNearOverride: new THREE.Color(0xff2200).multiplyScalar(1.4), // Bright red-orange
-    portalColorFarOverride: new THREE.Color(0x660000).multiplyScalar(1.3), // Deep red
-    neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR.clone().multiplyScalar(1.2), // Brighter error color
-    neuralSphereOpacity: 0.9, // High opacity
-    neuralSpherePulseAmount: 0.01, // Almost no pulsing (appears frozen)
+    pulseColorOverride: new THREE.Color(0xff0000).multiplyScalar(1.4), // Reduced brightness
+    portalColorNearOverride: new THREE.Color(0xff2200).multiplyScalar(1.2), // Reduced brightness
+    portalColorFarOverride: new THREE.Color(0x660000).multiplyScalar(1.1), // Reduced brightness
+    neuralSphereColor: NEURAL_SPHERE_ERROR_COLOR.clone().multiplyScalar(1.1), // Reduced brightness
+    neuralSphereOpacity: 0.8, // Reduced opacity for smoother transition
+    neuralSpherePulseAmount: 0.008, // Slightly reduced for smoother frozen effect
     pulsesFromCenter: true, // Particles expand from center
-    neuralSphereScale: NEURAL_SPHERE_ERROR_SCALE, // 15% larger sphere
+    neuralSphereScale: 1.08, // Reduced scale change for smoother transition
     frozenAnimation: true // Frozen animation
   }
 };
