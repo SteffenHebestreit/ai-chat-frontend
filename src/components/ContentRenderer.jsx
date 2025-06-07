@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import './ContentRenderer.css';
 
 // Helper for syntax highlighting in ReactMarkdown
@@ -65,11 +66,11 @@ const ThinkingSection = ({ content, isTyping }) => {
         </svg>
       </div>
       
-      {isExpanded && (
-        <div className="thinking-content">
+      {isExpanded && (        <div className="thinking-content">
           <ReactMarkdown
             children={content}
             remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
             components={syntaxHighlighterComponents}
           />
         </div>
@@ -149,6 +150,28 @@ const MediaRenderer = ({ mediaContent }) => {
   return null;
 };
 
+// Function to highlight tool call patterns
+const highlightToolCalls = (text) => {
+  if (typeof text !== 'string') return text;
+  
+  // RegEx pattern for tool calls
+  const toolCallRegex = /\[(?:Calling tool|Executing tools?|Tool execution|Tool result|Tool error|Tool failed|Tool execution failed|Tool completed successfully|Continuing conversation|Step [0-9]+|Using tool|Task complete|Task started|Processing|Tool thinking|Tool output|Result|Executing|Tool execution continues)[^\]]*\]/g;
+  
+  // Split text by tool call patterns and wrap them with special markers
+  const parts = text.split(toolCallRegex);  const matches = text.match(toolCallRegex) || [];
+  
+  let result = '';
+  for (let i = 0; i < parts.length; i++) {
+    result += parts[i];
+    if (i < matches.length) {
+      // Wrap tool call in a span that we can style (no bold wrapper)
+      result += `<span class="tool-call-highlight">${matches[i]}</span>`;
+    }
+  }
+  
+  return result;
+};
+
 // Main content renderer component
 const ContentRenderer = ({ content, isTyping }) => {
   const [processedContent, setProcessedContent] = useState('');
@@ -185,9 +208,8 @@ const ContentRenderer = ({ content, isTyping }) => {
               newMediaContents.push(item);
             }
           });
-          
-          // Set the text content for markdown processing
-          setProcessedContent(textContents.join('\n\n'));
+            // Set the text content for markdown processing
+          setProcessedContent(highlightToolCalls(textContents.join('\n\n')));
           
           // Set media contents for rendering
           setMediaContents(newMediaContents);
@@ -204,7 +226,7 @@ const ContentRenderer = ({ content, isTyping }) => {
           ? '📎 *This message contained attached files that cannot be displayed in chat history*'
           : content;
         
-        setProcessedContent(fallbackText);
+        setProcessedContent(highlightToolCalls(fallbackText));
         setMediaContents([]);
         processThinkingSections(fallbackText);
         return;
@@ -285,13 +307,13 @@ const ContentRenderer = ({ content, isTyping }) => {
         currentPosition = text.length;
       }
     }
-    
-    // Add any remaining content
+      // Add any remaining content
     if (currentPosition < text.length) {
       newProcessedContent += text.substring(currentPosition);
     }
     
-    setProcessedContent(newProcessedContent);
+    // Apply tool call highlighting to the processed content
+    setProcessedContent(highlightToolCalls(newProcessedContent));
     setThinkingSections(newThinkingSections);
     setIsThinking(inThinking);
   };
@@ -323,12 +345,12 @@ const ContentRenderer = ({ content, isTyping }) => {
           isTyping={false}
         />
       ))}
-      
-      {/* Regular content */}
+        {/* Regular content */}
       {processedContent && (
         <ReactMarkdown
           children={processedContent}
           remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
           components={syntaxHighlighterComponents}
         />
       )}
