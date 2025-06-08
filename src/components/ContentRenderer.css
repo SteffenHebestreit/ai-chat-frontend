@@ -112,3 +112,14 @@
 .thinking-indicator .question {
   text-shadow: 0 0 4px rgba(255, 170, 0, 0.6);
 }
+
+/* Markdown content styles */
+.content-renderer a {
+  color: #ffff33;
+  text-decoration: underline;
+}
+
+.content-renderer a:hover {
+  color: #ffee00; /* Slightly darker yellow on hover */
+  text-decoration: none;
+}

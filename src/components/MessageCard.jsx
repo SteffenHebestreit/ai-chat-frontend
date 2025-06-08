@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'; // Added useEffect, useRef
 import ContentRenderer from './ContentRenderer';
 import FileAttachment from './FileAttachment';
+import { normalizeMarkdownContent } from '../services/chatService';
 import './MessageCard.css';
 
 // Icon Components
@@ -45,7 +46,7 @@ const ExpandIcon = ({ className }) => (
 );
 
 
-function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAttachment, onOrbStateChange }) {
+function MessageCard({ role, content, rawContent, timestamp, isFromHistory, isTyping, fileAttachment, onOrbStateChange }) {
   const [isExpanded, setIsExpanded] = useState(
     !(isFromHistory && content && content.length >= 250)
   );
@@ -54,63 +55,16 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
   const [toolCallStatuses, setToolCallStatuses] = useState([]); // New state for tool call statuses array
   const [showToolDropdown, setShowToolDropdown] = useState(false); // New state for dropdown visibility
   const [processedContent, setProcessedContent] = useState(content); // New state for processed content
+  const [contentToRender, setContentToRender] = useState(content); // Content to pass to ContentRenderer
 
   const messageCardRef = useRef(null);
   const messageContentRef = useRef(null);
 
-  // Function to detect error content
-  const detectErrorContent = (content) => {
-    if (typeof content !== 'string') return false;
-    
-    // Try to parse as JSON to detect error objects
-    try {
-      const parsed = JSON.parse(content);
-      if (parsed && typeof parsed === 'object' && parsed.error) {
-        return true;
-      }
-    } catch (e) {
-      // Not valid JSON, check for other error patterns
-    }
-    
-    // Check for common error patterns in text
-    const errorPatterns = [
-      /connection\s+timed?\s+out/i,
-      /error\s+processing/i,
-      /getsockopt/i,
-      /connection\s+refused/i,
-      /network\s+error/i,
-      /timeout/i,
-      /failed\s+to\s+connect/i,
-      /server\s+error/i,
-      /internal\s+server\s+error/i
-    ];
-    
-    return errorPatterns.some(pattern => pattern.test(content));
-  };
-
-  const toggleExpand = () => {
-    setIsExpanded(!isExpanded);
-  };
-
-  useEffect(() => {
-    if (isExpanded && messageContentRef.current) {
-      // Use a timeout to allow the DOM to update and render fully after expansion
-      const timer = setTimeout(() => {
-        if (messageContentRef.current && messageContentRef.current.scrollHeight > window.innerHeight) {
-          setShowScrollToTop(true);
-        } else {
-          setShowScrollToTop(false);
-        }
-      }, 100); // Small delay for rendering, adjust if needed
-      return () => clearTimeout(timer);
-    } else {
-      setShowScrollToTop(false);
-    }
-  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes  // Effect to process content for tool calls
+  // Effect to process content for tool calls - needs to run for both regular and history messages
   useEffect(() => {
     if (role === 'ai') {
       // For AI messages, check if it's a string that might contain tool call status
-      if (typeof content === 'string') {
+      if (typeof contentToRender === 'string') {
         // Function to extract tool calls with proper bracket matching
         const extractToolCalls = (text) => {
           const toolCallMatches = [];
@@ -151,7 +105,9 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
         };
         
         // Extract tool calls using the improved function
-        const matches = extractToolCalls(content);        if (matches && matches.length > 0) {
+        const matches = extractToolCalls(contentToRender);
+        
+        if (matches && matches.length > 0) {
           // Store all tool call statuses for dropdown in chronological order with deduplication
           const statuses = matches.map(match => match.slice(1, -1)); // Remove brackets
           
@@ -171,7 +127,7 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
           setToolCallStatus(lastMatch.slice(1, -1)); // Remove brackets
           
           // Remove tool calls from the main content to avoid duplication
-          let contentWithoutToolCalls = content;
+          let contentWithoutToolCalls = contentToRender;
           matches.forEach(match => {
             contentWithoutToolCalls = contentWithoutToolCalls.replace(match, '');
           });
@@ -180,21 +136,86 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
         } else {
           setToolCallStatuses([]);
           setToolCallStatus('');
-          setProcessedContent(content);
+          setProcessedContent(contentToRender);
         }
       } else {
         // For non-string AI content (like multimodal content), pass through without tool status processing
         setToolCallStatuses([]);
         setToolCallStatus('');
-        setProcessedContent(content);
+        setProcessedContent(contentToRender);
       }
     } else {
       // For non-AI messages, pass content through without any processing
       setToolCallStatuses([]);
       setToolCallStatus('');
-      setProcessedContent(content);
+      setProcessedContent(contentToRender);
     }
-  }, [content, role]);
+  }, [contentToRender, role]);
+
+  const toggleExpand = () => {
+    setIsExpanded(!isExpanded);
+  };
+
+  useEffect(() => {
+    if (isExpanded && messageContentRef.current) {
+      // Use a timeout to allow the DOM to update and render fully after expansion
+      const timer = setTimeout(() => {
+        if (messageContentRef.current && messageContentRef.current.scrollHeight > window.innerHeight) {
+          setShowScrollToTop(true);
+        } else {
+          setShowScrollToTop(false);
+        }
+      }, 100); // Small delay for rendering, adjust if needed
+      return () => clearTimeout(timer);
+    } else {
+      setShowScrollToTop(false);
+    }
+  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes
+
+  // Effect to normalize markdown content from history
+  useEffect(() => {
+    // Prioritize rawContent if available, but don't apply tool call processing here
+    // (that's handled in the separate useEffect for tool calls)
+    if (rawContent) {
+      // If we have rawContent, make it available for tool call processing
+      setContentToRender(rawContent);
+    } else if (isFromHistory && typeof content === 'string') {
+      // Fall back to normalizing the regular content if no rawContent is available
+      setContentToRender(normalizeMarkdownContent(content));
+    } else {
+      setContentToRender(content);
+    }
+  }, [content, rawContent, isFromHistory]);
+
+  // Function to detect error content
+  const detectErrorContent = (content) => {
+    if (typeof content !== 'string') return false;
+    
+    // Try to parse as JSON to detect error objects
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && parsed.error) {
+        return true;
+      }
+    } catch (e) {
+      // Not valid JSON, check for other error patterns
+    }
+    
+    // Check for common error patterns in text
+    const errorPatterns = [
+      /connection\s+timed?\s+out/i,
+      /error\s+processing/i,
+      /getsockopt/i,
+      /connection\s+refused/i,
+      /network\s+error/i,
+      /timeout/i,
+      /failed\s+to\s+connect/i,
+      /server\s+error/i,
+      /internal\s+server\s+error/i
+    ];
+    
+    return errorPatterns.some(pattern => pattern.test(content));
+  };
   // Effect to detect error content and trigger orb state change
   useEffect(() => {
     if (onOrbStateChange && detectErrorContent(processedContent)) {
@@ -245,8 +266,7 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
     <div ref={messageCardRef} className={`message ${role === 'user' ? 'user' : (role === 'system' ? 'system-error' : 'ai')}`}>
       <div className="message-icon-wrapper">
         {role === 'user' && <UserRoleIcon />}
-        {role === 'ai' && <AiRoleIcon />}
-        {role === 'system' && <ErrorRoleIcon />}
+        {role === 'ai' && <AiRoleIcon />}      {role === 'system' && <ErrorRoleIcon />}
         
         {processedContent && processedContent.length >= 250 && (
           <button
@@ -285,11 +305,14 @@ function MessageCard({ role, content, timestamp, isFromHistory, isTyping, fileAt
                       <span className="tool-step">Step {index + 1}:</span> {status}
                     </div>
                   ))}
-                </div>
-              )}
+                </div>              )}
             </div>
           )}
-          <ContentRenderer content={processedContent} isTyping={isTyping && !toolCallStatus} />
+          <ContentRenderer 
+            content={processedContent} // Changed from contentToRender
+            rawContent={rawContent}
+            isTyping={isTyping && !toolCallStatus}
+          />
         </div>
       )}
       {!isExpanded && processedContent && (

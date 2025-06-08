@@ -296,6 +296,21 @@ Serves the production build locally to preview it before deployment.
 *   **UX Improvements**: Created expandable tool call status indicators with chronological execution display
 *   **Error Handling**: Enhanced error detection with automatic visual feedback through orb state changes
 
+### Chat Message Rendering Improvements (June 2025)
+*   **Enhanced Link Styling**: Links within chat messages now feature a distinct yellowish color (`#ffff33`) that matches the orb's tool-use activity state, with a subtle hover effect for better visual feedback
+*   **Improved Tool Call Display**: Tool usage indicators (e.g., `[Calling tool: dateTime]`) are now exclusively displayed in a dedicated dropdown/summary section within AI message cards, preventing duplication in the main message content
+*   **Refined Markdown Processing**: Enhanced markdown formatting with better handling of headings, lists, and other structural elements for improved readability
+
+### Content Processing Enhancements
+*   **rawContent Prioritization**: The frontend now prioritizes a `rawContent` field from backend responses, especially for messages loaded from chat history, ensuring original formatting is preserved and tool calls are handled correctly
+*   **Robust Multimodal Parsing**: Updated `parseMultimodalContent` utility in `chatService.js` to handle various content structures from the backend more reliably
+*   **Content Normalization**: Added `normalizeMarkdownContent` utility to preprocess markdown content before rendering, improving consistency across different message sources
+
+### User Experience Improvements
+*   **Cleaner Message Display**: Streamlined message card layout with better separation between tool progress indicators and main content
+*   **Consistent Visual Theming**: Link colors now align with the application's overall color scheme, providing a more cohesive user experience
+*   **Error Resilience**: Improved error handling for multimodal content parsing with graceful fallbacks to preserve message display
+
 ## Learn More
 
 *   [Vite documentation](https://vitejs.dev/)
