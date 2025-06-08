@@ -307,7 +307,8 @@ export const parseMultimodalContent = (content) => {
   }
   
   // If content is a string, try to parse it
-  if (typeof content === 'string') {    // Handle the "Multimodal content: ArrayList" case
+  if (typeof content === 'string') {
+    // Handle the "Multimodal content: ArrayList" case
     if (content.includes('Multimodal content:') && content.includes('ArrayList')) {
       // Return a placeholder structure
       return [
@@ -324,7 +325,8 @@ export const parseMultimodalContent = (content) => {
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed)) {
           return parsed;
-        }        if (parsed.content && Array.isArray(parsed.content)) {
+        }
+        if (parsed.content && Array.isArray(parsed.content)) {
           return parsed.content;
         }
       } catch (e) {
@@ -334,5 +336,30 @@ export const parseMultimodalContent = (content) => {
   }
   
   // If all else fails, return content as text
-  return [{ type: 'text', text: content || '' }];
+  return [{ type: 'text', text: normalizeMarkdownContent(content) || '' }];
+};
+
+// Utility function to normalize markdown content for better rendering
+export const normalizeMarkdownContent = (text) => {
+  if (typeof text !== 'string') return text;
+  
+  // Fix markdown headers without proper spacing after hashes
+  // Convert: ###Title -> ### Title
+  text = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
+  
+  // Handle --- headers specifically
+  // This ensures that lines like "--- ### 1." are properly rendered
+  text = text.replace(/^(---\s*)(#+)(\s*\d+\.)/gm, '$1\n$2$3');
+  
+  // Ensure proper spacing after horizontal rules
+  text = text.replace(/^(---\s*)$/gm, '$1\n');
+  
+  // Ensure proper line breaks for list items and paragraphs
+  // Add double spaces at the end of lines that should have a line break
+  text = text.replace(/^(-|\d+\.)\s+(.+)$/gm, '$1 $2  ');
+  
+  // Preserve line breaks between different sections
+  text = text.replace(/\n(\s*)(#{1,6})\s+/g, '\n\n$1$2 ');
+  
+  return text;
 };

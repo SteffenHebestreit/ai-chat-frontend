@@ -16,7 +16,8 @@ import {
   streamMultimodalChatResponse,
   fetchLlmCapabilities,
   saveMultimodalUserMessage,
-  parseMultimodalContent
+  parseMultimodalContent,
+  normalizeMarkdownContent
 } from './services/chatService';
 import './App.css';
 
@@ -318,18 +319,22 @@ function App() {
                   msg.content.startsWith('{'))) ||
                 (msg.content && typeof msg.content === 'object' && 
                  (Array.isArray(msg.content) || 
-                  (msg.content.content && Array.isArray(msg.content.content))));
-
-              if (isMultimodal) {
+                  (msg.content.content && Array.isArray(msg.content.content))));              if (isMultimodal) {
                 // Use utility function to parse multimodal content
-                const parsedContent = parseMultimodalContent(msg.content);
-                processedContent = JSON.stringify(parsedContent);
-              }
-
-              return {
+                try {
+                  const parsedContent = parseMultimodalContent(msg.content);
+                  // Instead of JSON.stringify, preserve the structure for ContentRenderer to handle properly
+                  processedContent = parsedContent;
+                } catch (err) {
+                  console.error('Error parsing multimodal content:', err);
+                  // Fallback to original content if parsing fails
+                  processedContent = msg.content;
+                }
+              }              return {
                 id: msg.id,
                 role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
                 content: processedContent,
+                rawContent: msg.rawContent || processedContent, // Use rawContent from backend if available
                 timestamp: msg.timestamp,
                 isFromHistory: true, // Add flag for history messages
                 fileAttachment
@@ -437,8 +442,7 @@ function App() {
         }
 
         // Save AI response
-        await saveAgentResponse(chatSessionId, aiResponse);
-      } else {
+        await saveAgentResponse(chatSessionId, aiResponse);      } else {
         setMessages(prevMessages => 
           prevMessages.map(msg => 
             msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
@@ -566,8 +570,7 @@ function App() {
               break;
             }
             
-            const chunk = decoder.decode(value, { stream: true });
-            accumulatedResponseForSaving += chunk;
+            const chunk = decoder.decode(value, { stream: true });            accumulatedResponseForSaving += chunk;
             setMessages(prevMessages => 
               prevMessages.map(msg => 
                 msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
@@ -578,19 +581,17 @@ function App() {
           if (streamError.name === 'AbortError') {
             console.log('Stream reading aborted.');
             throw streamError;
-          }
-          console.error("Error reading stream:", streamError);
+          }          console.error("Error reading stream:", streamError);
           setOrbAiState('criticalError');
           setMessages(prevMessages => 
             prevMessages.map(msg => 
               msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
             )
           );
-          return;        }
+          return;}
         
         setOrbAiState('success');
-        // Note: No need to refresh chat history for existing chats - messages are already displayed locally
-      } else {
+        // Note: No need to refresh chat history for existing chats - messages are already displayed locally      } else {
         setMessages(prevMessages => 
           prevMessages.map(msg => 
             msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
@@ -601,14 +602,14 @@ function App() {
     } catch (error) {
       if (error.name === 'AbortError') {
         console.log('Multimodal stream fetch aborted by user.');
-        setOrbAiState('default');
-      } else {
+        setOrbAiState('default');      } else {
         console.error('Error in multimodal stream:', error);
         setMessages(prevMessages =>
           prevMessages.map(msg =>
             msg.id === aiMessageId ? { ...msg, content: `Error: ${error.message}` } : msg
           )
-        );        setOrbAiState('criticalError');
+        );
+        setOrbAiState('criticalError');
       }
     } finally {
       setIsLoading(false);
@@ -663,11 +664,11 @@ function App() {
                 <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
               </svg>
             )}
-          </button>
-        </div>        <div className="messages-container">          {messages.map((message, index) => (            <MessageCard 
+          </button>        </div>        <div className="messages-container">          {messages.map((message, index) => (            <MessageCard 
               key={message.id || index} 
               role={message.role} 
-              content={message.content} 
+              content={message.content}
+              rawContent={message.rawContent}
               timestamp={message.timestamp}
               isFromHistory={message.isFromHistory}
               isTyping={isTyping && index === messages.length - 1 && message.role === 'ai'} // Only set isTyping for the last AI message

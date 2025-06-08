@@ -150,58 +150,60 @@ const MediaRenderer = ({ mediaContent }) => {
   return null;
 };
 
-// Function to highlight tool call patterns
-const highlightToolCalls = (text) => {
-  if (typeof text !== 'string') return text;
-  
-  // RegEx pattern for tool calls
-  const toolCallRegex = /\[(?:Calling tool|Executing tools?|Tool execution|Tool result|Tool error|Tool failed|Tool execution failed|Tool completed successfully|Continuing conversation|Step [0-9]+|Using tool|Task complete|Task started|Processing|Tool thinking|Tool output|Result|Executing|Tool execution continues)[^\]]*\]/g;
-  
-  // Split text by tool call patterns and wrap them with special markers
-  const parts = text.split(toolCallRegex);  const matches = text.match(toolCallRegex) || [];
-  
-  let result = '';
-  for (let i = 0; i < parts.length; i++) {
-    result += parts[i];
-    if (i < matches.length) {
-      // Wrap tool call in a span that we can style (no bold wrapper)
-      result += `<span class="tool-call-highlight">${matches[i]}</span>`;
-    }
-  }
-  
-  return result;
-};
-
 // Main content renderer component
-const ContentRenderer = ({ content, isTyping }) => {
+const ContentRenderer = ({ content, isTyping, rawContent }) => {
   const [processedContent, setProcessedContent] = useState('');
   const [thinkingSections, setThinkingSections] = useState([]);
   const [isThinking, setIsThinking] = useState(false);
   const [currentThinking, setCurrentThinking] = useState('');
-  const [mediaContents, setMediaContents] = useState([]);
-
-  // Process content to extract thinking sections and handle multimodal content
+  const [mediaContents, setMediaContents] = useState([]);// Process content to extract thinking sections and handle multimodal content
   useEffect(() => {
-    if (!content) {
+    // Choose content source - prioritize rawContent if available
+    const contentToProcess = content;
+    
+    if (!contentToProcess) {
       setProcessedContent('');
       setThinkingSections([]);
       setIsThinking(false);
       setCurrentThinking('');
       setMediaContents([]);
       return;
-    }    // Try to parse if the content might be JSON (for multimodal messages)
+    }
+    
+    // Helper function to normalize markdown content
+    const normalizeMarkdown = (text) => {
+      if (typeof text !== 'string') return text;
+      
+      // Fix markdown headers without proper spacing after hashes
+      // Convert: ###Title -> ### Title
+      text = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
+      
+      // Handle --- headers specifically
+      // This ensures that lines like "--- ### 1." are properly rendered
+      text = text.replace(/^(---\s*)(#+)(\s*\d+\.)/gm, '$1\n$2$3');
+      
+      // Ensure proper spacing after horizontal rules
+      text = text.replace(/^(---\s*)$/gm, '$1\n');
+      
+      // Ensure proper line breaks for list items and paragraphs
+      // Add double spaces at the end of lines that should have a line break
+      text = text.replace(/^(-|\d+\.)\s+(.+)$/gm, '$1 $2  ');
+      
+      // Preserve line breaks between different sections
+      text = text.replace(/\n(\s*)(#{1,6})\s+/g, '\n\n$1$2 ');
+      
+      return text;
+    };
+    
+    // Try to parse if the content might be JSON (for multimodal messages)
     try {
-      // Check if it's a string that might be JSON
-      if (typeof content === 'string' && 
-          (content.trim().startsWith('[') || content.trim().startsWith('{'))) {
-        const parsedContent = JSON.parse(content);
-        
-        // If it's an array, it might be multimodal content
-        if (Array.isArray(parsedContent)) {
-          const textContents = [];
+      // Check if content is already parsed (a non-string object)
+      if (typeof content === 'object' && content !== null) {
+        // Already parsed content from history loading
+        if (Array.isArray(content)) {          const textContents = [];
           const newMediaContents = [];
           
-          parsedContent.forEach(item => {
+          content.forEach(item => {
             if (item.type === 'text') {
               textContents.push(item.text || '');
             } else if (item.type === 'image_url' || item.type === 'file_url') {
@@ -209,14 +211,45 @@ const ContentRenderer = ({ content, isTyping }) => {
             }
           });
             // Set the text content for markdown processing
-          setProcessedContent(highlightToolCalls(textContents.join('\n\n')));
+          setProcessedContent(textContents.join('\n\n'));
           
           // Set media contents for rendering
           setMediaContents(newMediaContents);
           
           // Process thinking sections in the text content
-          processThinkingSections(textContents.join('\n\n'));
+          processThinkingSections(normalizeMarkdown(textContents.join('\n\n')));
           return;
+        }
+      }      // Otherwise check if it's a string that might be JSON
+      else if (typeof content === 'string' && 
+          (content.trim().startsWith('[') || content.trim().startsWith('{'))) {
+        try {
+          const parsedContent = JSON.parse(content);
+          
+          // If it's an array, it might be multimodal content
+          if (Array.isArray(parsedContent)) {            const textContents = [];
+            const newMediaContents = [];
+            
+            parsedContent.forEach(item => {
+              if (item.type === 'text') {
+                textContents.push(item.text || '');
+              } else if (item.type === 'image_url' || item.type === 'file_url') {
+                newMediaContents.push(item);
+              }
+            });
+            // Set the text content for markdown processing
+            setProcessedContent(textContents.join('\n\n'));
+            
+            // Set media contents for rendering
+            setMediaContents(newMediaContents);
+            
+            // Process thinking sections in the text content
+            processThinkingSections(normalizeMarkdown(textContents.join('\n\n')));
+            return;
+          }
+        } catch (e) {
+          // If parsing fails, continue with normal processing
+          console.warn('Failed to parse JSON content:', e);
         }
       }
         // Handle special case of "Multimodal content:" prefix
@@ -226,17 +259,15 @@ const ContentRenderer = ({ content, isTyping }) => {
           ? '📎 *This message contained attached files that cannot be displayed in chat history*'
           : content;
         
-        setProcessedContent(highlightToolCalls(fallbackText));
+        setProcessedContent(fallbackText);
         setMediaContents([]);
-        processThinkingSections(fallbackText);
+        processThinkingSections(normalizeMarkdown(fallbackText));
         return;
       }
     } catch (e) {
       // If parsing fails, it's not JSON, so continue with normal processing
-    }
-
-    // Process as regular text content with potential thinking sections
-    processThinkingSections(content);
+    }// Process as regular text content with potential thinking sections
+    processThinkingSections(normalizeMarkdown(content));
     setMediaContents([]);
   }, [content]);
 
@@ -313,7 +344,7 @@ const ContentRenderer = ({ content, isTyping }) => {
     }
     
     // Apply tool call highlighting to the processed content
-    setProcessedContent(highlightToolCalls(newProcessedContent));
+    setProcessedContent(newProcessedContent);
     setThinkingSections(newThinkingSections);
     setIsThinking(inThinking);
   };

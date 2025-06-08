@@ -106,3 +106,23 @@ if (isTextFile) {
 - **Automatic Model Switching**: System finds compatible model for unsupported files
 - **Mixed Content**: Combine text with files in single messages
 - **Thinking Sections**: View AI reasoning process in collapsible sections
+
+### Recent Enhancements (June 2025)
+
+#### Content Processing Improvements
+- **rawContent Integration**: Added support for `rawContent` field from backend responses, which is prioritized for rendering messages from chat history
+- **Enhanced Content Parsing**: Updated `parseMultimodalContent` utility to handle various backend content structures more robustly:
+  - Direct array content (e.g., `[{type: "text", text: "..."}]`)
+  - Wrapped content objects (e.g., `{content: [{type: "text", text: "..."}]}`)
+  - Error handling with graceful fallbacks to preserve message display
+- **Markdown Normalization**: Added `normalizeMarkdownContent` utility to preprocess text content before rendering, ensuring consistent formatting
+
+#### Tool Call Processing
+- **Clean Separation**: Tool call indicators (e.g., `[Calling tool: dateTime]`) are now extracted by `MessageCard.jsx` and displayed exclusively in dropdown summaries
+- **Content Stripping**: Tool call strings are completely removed from main message content before passing to `ContentRenderer.jsx`
+- **History Message Handling**: Special processing for messages loaded from chat history to ensure tool calls are properly extracted and displayed
+
+#### Visual Enhancements
+- **Link Styling**: Links within rendered content now use a consistent yellowish color (`#ffff33`) that matches the application's tool-use activity theme
+- **Improved Readability**: Enhanced markdown processing for better formatting of headings, lists, and other structural elements
+- **Consistent Theming**: Visual elements now align with the orb's color scheme for a more cohesive user experience
