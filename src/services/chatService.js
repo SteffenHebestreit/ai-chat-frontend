@@ -5,7 +5,7 @@ const getAuthHeaders = () => ({
   'Content-Type': 'application/json'
 });
 
-// Helper function to get auth headers with custom content type
+// Enhanced function to get auth headers with custom content type
 const getAuthHeadersWithContentType = (contentType) => ({
   'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
   'Content-Type': contentType
@@ -37,16 +37,6 @@ export const createNewChat = async (userMessageContent) => {
   return handleResponse(response);
 };
 
-// New function to create a multimodal chat
-export const createNewMultimodalChat = async (messageData) => {
-  const response = await fetch(`${getBackendUrl()}/chats/create`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(messageData),
-  });
-  return handleResponse(response);
-};
-
 export const saveUserMessage = async (chatSessionId, userMessageContent) => {
   const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/messages`, {
     method: 'POST',
@@ -66,58 +56,18 @@ export const saveUserMessage = async (chatSessionId, userMessageContent) => {
   return { status: response.status, ok: response.ok }; 
 };
 
-// New function to save a multimodal user message
-export const saveMultimodalUserMessage = async (chatSessionId, messageData) => {
-  const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/messages`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(messageData),
-  });
-  
-  if (!response.ok) {
-    const errorData = await response.text().catch(() => `HTTP error ${response.status}`);
-    throw new Error(errorData || `HTTP error ${response.status}`);
-  }
-  
-  const contentType = response.headers.get("content-type");
-  if (contentType && contentType.indexOf("application/json") !== -1) {
-    return response.json();
-  }
-  return { status: response.status, ok: response.ok };
-};
-
 export const streamChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => { // Added signal parameter and llmId
-  const url = `${getBackendUrl()}/chats/${chatSessionId}/message/stream${llmId ? `?llmId=${llmId}` : ''}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      ...getAuthHeaders(),
-      'Content-Type': 'text/plain', // Override for this specific endpoint
-    },
-    body: userMessageContent,
-    signal, // Pass the signal to the fetch request
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
-  }
-  return response; // Return the raw response for stream processing
-};
-
-// New function to stream multimodal chat response
-export const streamMultimodalChatResponse = async (chatSessionId, messageData, signal, llmId = '1') => {
   // Create a FormData object for multipart/form-data
   const formData = new FormData();
   
   // If we have a file in the message data, add it to the form
-  if (messageData.content && Array.isArray(messageData.content)) {
+  if (userMessageContent.content && Array.isArray(userMessageContent.content)) {
     // Find the file content (if any)
-    const fileContent = messageData.content.find(item => 
+    const fileContent = userMessageContent.content.find(item => 
       item.type === 'image_url' || item.type === 'file_url');
     
     // Find the text content (if any)
-    const textContent = messageData.content.find(item => item.type === 'text');
+    const textContent = userMessageContent.content.find(item => item.type === 'text');
     
     if (fileContent) {
       // Get the data URI
@@ -143,9 +93,16 @@ export const streamMultimodalChatResponse = async (chatSessionId, messageData, s
       formData.append('prompt', textContent.text);
     }
   }
-  
   // Add the llmId parameter as required by the backend
   formData.append('llmId', llmId);
+  
+  // Add the chatId parameter to ensure the right chat is selected
+  if (chatSessionId) {
+    formData.append('chatId', chatSessionId);
+  }
+  
+  console.log('Streaming multimodal response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
+  console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => [key, typeof value === 'object' ? `${value.constructor.name}(${value.size || value.length || 'unknown'})` : value]));
   
   // Use the correct multimodal streaming endpoint
   const response = await fetch(`${getBackendUrl()}/chat-stream-multimodal`, {
@@ -158,6 +115,10 @@ export const streamMultimodalChatResponse = async (chatSessionId, messageData, s
     signal,
   });
 
+  console.log('Multimodal stream response status:', response.status);
+  console.log('Multimodal stream response headers:', Object.fromEntries(response.headers.entries()));
+  console.log('Multimodal stream response body exists:', !!response.body);
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
@@ -165,66 +126,78 @@ export const streamMultimodalChatResponse = async (chatSessionId, messageData, s
   return response; // Return the raw response for stream processing
 };
 
-// Function to prepare a file for sending to the API
-export const prepareFileForUpload = async (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      // Get base64 data
-      const base64Data = reader.result.split(',')[1];
-      
-      // Determine the media type
-      let mediaType = file.type;
-      if (!mediaType && file.name.toLowerCase().endsWith('.pdf')) {
-        mediaType = 'application/pdf';
-      } else if (!mediaType && file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        mediaType = 'image/' + file.name.split('.').pop().toLowerCase();
-      }
-      
-      // Create a content object in the format expected by the backend
-      const contentObject = {
-        type: mediaType.startsWith('image/') ? 'image_url' : 'file_url',
-        file_url: {
-          url: `data:${mediaType};base64,${base64Data}`,
-          detail: "auto" // Let the LLM determine the detail level needed
-        }
-      };
-      
-      resolve(contentObject);
-    };
-    reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(file);
-  });
-};
-
-// Function to create a multimodal message payload
-export const createMultimodalMessagePayload = async (textContent, file = null) => {
-  // If no file, return a simple text message
-  if (!file) {
-    return {
-      role: 'user',
-      contentType: 'text/plain',
-      content: textContent
-    };
+// New function to create multimodal chat with streaming response
+export const createMultimodalChatWithStream = async (textContent, file, signal, llmId = '1') => {
+  // Create a FormData object for multipart/form-data
+  const formData = new FormData();
+  
+  // Add the file directly (no conversion needed)
+  if (file) {
+    formData.append('file', file);
   }
   
-  try {
-    // Prepare the file
-    const fileContentObject = await prepareFileForUpload(file);
-    
-    // Create a multimodal message payload
-    return {
-      role: 'user',
-      contentType: 'multipart/mixed',
-      content: [
-        { type: 'text', text: textContent || '' },
-        fileContentObject
-      ]
-    };
-  } catch (error) {
-    console.error('Failed to prepare file for upload:', error);
-    throw error;
+  // Add text content if present
+  if (textContent && textContent.trim()) {
+    formData.append('prompt', textContent);
   }
+  
+  // Add the llmId parameter
+  formData.append('llmId', llmId);
+  
+  console.log('Creating multimodal chat with LLM ID:', llmId);
+  console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => [key, typeof value === 'object' ? `${value.constructor.name}(${value.size || value.length || 'unknown'})` : value]));
+    // Use the new create multimodal chat endpoint with streaming
+  const response = await fetch(`${getBackendUrl()}/create-stream-multimodal-chat`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+      // Let the browser set the correct Content-Type with boundary for FormData
+    },
+    body: formData,
+    signal,
+  });
+
+  console.log('Create multimodal chat response status:', response.status);
+  console.log('Create multimodal chat response headers:', Object.fromEntries(response.headers.entries()));
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
+  }
+  
+  return response; // Return the raw response for stream processing
+};
+
+export const streamMultimodalMessage = async (chatId, textContent, file, signal, llmId = '1') => {
+  const formData = new FormData();
+  
+  if (file) {
+    formData.append('file', file);
+  }
+  
+  if (textContent && textContent.trim()) {
+    formData.append('prompt', textContent);
+  }
+  
+  formData.append('llmId', llmId);
+  
+  console.log('Streaming multimodal message to existing chat:', chatId, 'with LLM ID:', llmId);
+  
+  const response = await fetch(`${getBackendUrl()}/chats/${chatId}/message/stream-multimodal`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+    },
+    body: formData,
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
+  }
+  
+  return response;
 };
 
 export const saveAgentResponse = async (chatSessionId, agentResponseContent) => {
@@ -318,8 +291,136 @@ export const parseMultimodalContent = (content) => {
         }
       ];
     }
+      // Handle the format like "[{type=text, text=...}, {type=image_url, file_url={url=...}}]"
+    if (content.includes('type=') && (content.includes('image_url') || content.includes('file_url'))) {
+      console.log('Parsing malformed multimodal content:', content);
+      
+      try {        // Convert the malformed format to proper JSON
+        let jsonString = content
+          // Replace equals with colons for object properties
+          .replace(/(\w+)=/g, '"$1":')
+          // Fix the nested object structure for file_url
+          .replace(/file_url:\{/g, '"file_url":{')
+          .replace(/image_url:\{/g, '"image_url":{')          // Handle data URLs specially - improved to capture complete base64 strings without truncation
+          .replace(/url=(data:image\/[^,]+,[\w+/=]+)/g, (match, dataUrl) => {
+            return 'url="' + dataUrl.trim() + '"';
+          })
+          // Then handle other data URL patterns
+          .replace(/:\s*(data:[^,}\]]*,[\w+/=]*)/g, (match, dataUrl) => {
+            return ':"' + dataUrl.trim() + '"';
+          })
+          // Add quotes around other values that aren't already quoted
+          .replace(/:\s*([^",\[\]{}][^,\[\]{}]*?)([,\]}])/g, (match, value, delimiter) => {
+            const trimmedValue = value.trim();
+            // Skip if already processed as data URL or if it's already quoted, a number, boolean, or null
+            if (trimmedValue.startsWith('"') || trimmedValue.startsWith('data:') || 
+                /^(true|false|null|\d+(\.\d+)?)$/.test(trimmedValue)) {
+              return ':' + trimmedValue + delimiter;
+            }
+            return ':"' + trimmedValue + '"' + delimiter;
+          });
+        
+        console.log('Attempting to parse transformed content:', jsonString);
+        const parsed = JSON.parse(jsonString);
+        
+        if (Array.isArray(parsed)) {
+          console.log('Successfully parsed as array:', parsed);
+          return parsed;
+        }
+        if (parsed.content && Array.isArray(parsed.content)) {
+          console.log('Successfully parsed with content property:', parsed.content);
+          return parsed.content;
+        }
+      } catch (e) {
+        console.warn('Failed to parse malformed multimodal content, trying fallback extraction:', e);
+        console.warn('Original content:', content);
+          // Fallback: try to extract text and image information manually
+        const parts = [];
+          // Extract text parts - improved regex to handle quotes and special characters
+        const textPattern = /text=([^,\]]*?)(?=[,\]]|(?:,\s*type=))/g;
+        let textMatch;
+        while ((textMatch = textPattern.exec(content)) !== null) {
+          let text = textMatch[1].trim();
+          // Remove surrounding quotes and clean up
+          text = text.replace(/^["']|["']$/g, '').replace(/\}$/, '');
+          if (text && text !== 'null' && text !== '') {
+            parts.push({ type: 'text', text: text });
+          }
+        }        // Extract image parts - comprehensive patterns for different structures        // Pattern 1: type=image_url with nested file_url={url=...} - improved base64 capture
+        const imageUrlWithFileUrlPattern = /type=image_url[^}]*file_url=\{url=(data:image\/[^,]+,[\w+/=]*)/g;
+        let match1;
+        while ((match1 = imageUrlWithFileUrlPattern.exec(content)) !== null) {
+          const url = match1[1].trim();
+          if (url) {
+            console.log('Pattern 1 found image URL:', url.substring(0, 50) + '...');
+            parts.push({ 
+              type: 'image_url', 
+              image_url: { url: url, detail: 'auto' } 
+            });
+          }
+        }        // Pattern 2: type=image_url with direct image_url={url=...} - improved base64 capture
+        const imageUrlDirectPattern = /type=image_url[^}]*image_url=\{url=(data:image\/[^,]+,[\w+/=]*)/g;
+        let match2;
+        while ((match2 = imageUrlDirectPattern.exec(content)) !== null) {
+          const url = match2[1].trim();
+          if (url && !parts.some(p => p.image_url?.url === url)) {
+            console.log('Pattern 2 found image URL:', url.substring(0, 50) + '...');
+            parts.push({ 
+              type: 'image_url', 
+              image_url: { url: url, detail: 'auto' } 
+            });
+          }
+        }        // Pattern 3: Any file_url or image_url with url= containing image data - improved base64 capture
+        const anyImagePattern = /(?:file_url|image_url)=\{url=(data:image\/[^,]+,[\w+/=]*)/g;
+        let match3;
+        while ((match3 = anyImagePattern.exec(content)) !== null) {
+          const url = match3[1].trim();
+          if (url && !parts.some(p => p.image_url?.url === url)) {
+            console.log('Pattern 3 found image URL:', url.substring(0, 50) + '...');
+            parts.push({ 
+              type: 'image_url', 
+              image_url: { url: url, detail: 'auto' } 
+            });
+          }
+        }        // Pattern 4: Direct url=data:image/... pattern - improved to capture complete base64 data
+        const directImagePattern = /url=(data:image\/[^,]+,[\w+/=]*)/g;
+        let match4;
+        while ((match4 = directImagePattern.exec(content)) !== null) {
+          const url = match4[1].trim();
+          if (url && !parts.some(p => p.image_url?.url === url)) {
+            console.log('Pattern 4 found image URL:', url.substring(0, 50) + '...');
+            parts.push({ 
+              type: 'image_url', 
+              image_url: { url: url, detail: 'auto' } 
+            });
+          }
+        }
+          // Extract file parts - improved to handle different file formats
+        const filePattern = /url=(data:(?:application|text)\/[^}]+)/g;
+        let fileMatch;
+        while ((fileMatch = filePattern.exec(content)) !== null) {
+          const url = fileMatch[1].trim();
+          if (url) {
+            console.log('Found file URL:', url.substring(0, 50) + '...');
+            parts.push({ 
+              type: 'file_url', 
+              file_url: { url: url, detail: 'auto' } 
+            });
+          }
+        }
+        console.log('Fallback extraction - found text parts:', parts.filter(p => p.type === 'text'));
+        console.log('Fallback extraction - found image parts:', parts.filter(p => p.type === 'image_url'));
+        
+        if (parts.length > 0) {
+          console.log('Fallback extraction successful. Found parts:', parts);
+          return parts;
+        } else {
+          console.warn('Fallback extraction found no parts');
+        }
+      }
+    }
     
-    // Try to parse as JSON
+    // Try to parse as regular JSON
     if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(content);
@@ -343,6 +444,48 @@ export const parseMultimodalContent = (content) => {
 export const normalizeMarkdownContent = (text) => {
   if (typeof text !== 'string') return text;
   
+  // First, protect existing LaTeX delimiters from being modified
+  const latexPlaceholders = [];
+  let placeholderCounter = 0;
+  
+  // Protect inline math $...$
+  text = text.replace(/\$([^$]+)\$/g, (match) => {
+    const placeholder = `__LATEX_INLINE_${placeholderCounter++}__`;
+    latexPlaceholders.push({ placeholder, content: match });
+    return placeholder;
+  });
+  
+  // Protect block math $$...$$
+  text = text.replace(/\$\$([^$]+)\$\$/g, (match) => {
+    const placeholder = `__LATEX_BLOCK_${placeholderCounter++}__`;
+    latexPlaceholders.push({ placeholder, content: match });
+    return placeholder;
+  });
+  // Handle common LaTeX commands that appear without delimiters
+  // Convert \boxed{...} to $\boxed{\text{...}}$ for proper text rendering
+  text = text.replace(/\\boxed\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (match, content) => {
+    // If the content looks like math (contains math symbols), keep it as is
+    const mathSymbols = /[+\-*/=<>^_{}\\]|\\[a-zA-Z]+/;
+    if (mathSymbols.test(content)) {
+      return `$\\boxed{${content}}$`;
+    } else {
+      // For regular text, wrap it in \text{} to preserve spacing
+      return `$\\boxed{\\text{${content}}}$`;
+    }
+  });
+  
+  // Convert standalone LaTeX commands (only if not already in math mode)
+  const latexCommands = ['frac', 'sqrt', 'sum', 'int', 'lim', 'sin', 'cos', 'tan', 'log', 'ln', 'exp', 'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'theta', 'lambda', 'mu', 'pi', 'sigma', 'phi', 'psi', 'omega'];
+  latexCommands.forEach(cmd => {
+    // Match \command{...} or \command not already in math delimiters
+    const regex = new RegExp(`(?<!\\$[^$]*)\\\\${cmd}(?:\\{[^}]*\\}|\\b)(?![^$]*\\$)`, 'g');
+    text = text.replace(regex, (match) => {
+      // Check if this match is already inside a placeholder (protected)
+      const isProtected = latexPlaceholders.some(item => item.content.includes(match));
+      return isProtected ? match : `$${match}$`;
+    });
+  });
+  
   // Fix markdown headers without proper spacing after hashes
   // Convert: ###Title -> ### Title
   text = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
@@ -361,5 +504,97 @@ export const normalizeMarkdownContent = (text) => {
   // Preserve line breaks between different sections
   text = text.replace(/\n(\s*)(#{1,6})\s+/g, '\n\n$1$2 ');
   
+  // Restore protected LaTeX content
+  latexPlaceholders.forEach(({ placeholder, content }) => {
+    text = text.replace(placeholder, content);
+  });
+  
   return text;
+};
+
+// Utility function to apply capability overrides to models
+export const applyCapabilityOverrides = (models) => {
+  const savedOverrides = localStorage.getItem('capabilityOverrides');
+  if (!savedOverrides) {
+    return models; // No overrides, return original models
+  }
+  
+  try {
+    const overrides = JSON.parse(savedOverrides);
+    
+    return models.map(model => {
+      const modelOverrides = overrides[model.id];
+      if (!modelOverrides) {
+        return model; // No overrides for this model
+      }
+      
+      // Create a new model object with overridden capabilities
+      const overriddenModel = { ...model };
+      
+      // Apply disabled override
+      if (modelOverrides.disabled !== undefined) {
+        overriddenModel.disabled = modelOverrides.disabled;
+      }
+      
+      // Apply text capability override
+      if (modelOverrides.text !== undefined) {
+        overriddenModel.supportsText = modelOverrides.text;
+        if (overriddenModel.capabilities) {
+          overriddenModel.capabilities.text = modelOverrides.text;
+        }
+      }
+      
+      // Apply image capability override
+      if (modelOverrides.image !== undefined) {
+        overriddenModel.supportsImage = modelOverrides.image;
+        if (overriddenModel.capabilities) {
+          overriddenModel.capabilities.image = modelOverrides.image;
+        }
+      }
+      
+      // Apply PDF capability override
+      if (modelOverrides.pdf !== undefined) {
+        overriddenModel.supportsPdf = modelOverrides.pdf;
+        if (overriddenModel.capabilities) {
+          overriddenModel.capabilities.pdf = modelOverrides.pdf;
+        }
+      }
+      
+      // Apply tools capability override
+      if (modelOverrides.tools !== undefined) {
+        overriddenModel.supportsTools = modelOverrides.tools;
+        if (overriddenModel.capabilities) {
+          overriddenModel.capabilities.tools = modelOverrides.tools;
+        }
+      }
+      
+      return overriddenModel;
+    }).filter(model => !model.disabled); // Filter out disabled models
+  } catch (error) {
+    console.error('Error applying capability overrides:', error);
+    return models; // Return original models if there's an error
+  }
+};
+
+// Enhanced function to fetch LLM capabilities with overrides applied
+export const fetchLlmCapabilitiesWithOverrides = async () => {
+  const models = await fetchLlmCapabilities();
+  let processedModels;
+  
+  if (Array.isArray(models)) {
+    processedModels = models;
+  } else if (models && models.result && Array.isArray(models.result)) {
+    processedModels = models.result;
+  } else {
+    return models; // Return as-is if format is unexpected
+  }
+  
+  const overriddenModels = applyCapabilityOverrides(processedModels);
+  
+  // Return in the same format as received
+  if (Array.isArray(models)) {
+    return overriddenModels;
+  } else {
+    return { ...models, result: overriddenModels };
+  }
 };
