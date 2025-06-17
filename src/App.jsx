@@ -8,6 +8,7 @@ import ModelSelector from './components/ModelSelector';
 import {
   createNewChat,
   streamChatResponse,
+  streamTextChatResponse,
   fetchChatDetails,
   deleteChat as apiDeleteChat,
   createMultimodalChatWithStream,
@@ -298,11 +299,11 @@ function App() {
                   // Fallback to original content if parsing fails
                   processedContent = msg.content;
                 }
-              }return {
+              }              return {
                 id: msg.id,
                 role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
                 content: processedContent,
-                rawContent: msg.rawContent || processedContent, // Use rawContent from backend if available
+                rawContent: msg.rawContent || msg.content, // Ensure rawContent is available for tool call processing
                 timestamp: msg.timestamp,
                 isFromHistory: true, // Add flag for history messages
                 fileAttachment
@@ -320,17 +321,16 @@ function App() {
       setIsLoading(false);
       setIsTyping(false); // Ensure typing is false after loading completes
     }
-  }, [isPanelOpen, toggleChatHistory]);
-  // Helper function to send text-only messages
+  }, [isPanelOpen, toggleChatHistory]);  // Helper function to send text-only messages
   const sendTextMessage = async (messageContent, userMessageId) => {
     try {
       let chatSessionId = currentChatId;
       let isNewChat = false;
 
+      // If no current chat, create one first
       if (!chatSessionId) {
         try {
           const data = await createNewChat(messageContent);
-
           if (data && data.result && data.result.id) {
             chatSessionId = data.result.id;
             setCurrentChatId(chatSessionId);
@@ -350,21 +350,27 @@ function App() {
           setIsTyping(false);
           return;
         }
-      }      // Note: User message will be saved by the streaming endpoint
+      }
 
       // Create AbortController for this request
       const controller = new AbortController();
-      setAbortController(controller);
-
-      // Start AI response
+      setAbortController(controller);      // Start AI response
       const aiMessageId = `ai-${Date.now()}`;
-      const aiMessage = { id: aiMessageId, role: 'ai', content: '', timestamp: new Date().toISOString() };
+      const aiMessage = { 
+        id: aiMessageId, 
+        role: 'ai', 
+        content: '', 
+        rawContent: '', // Initialize rawContent for tool call processing
+        timestamp: new Date().toISOString() 
+      };
       setMessages(prevMessages => [...prevMessages, aiMessage]);
 
       // Log the model being used for debugging
       const modelId = selectedModel?.id || selectedModelId || '1';
-      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel);      // Stream the response
-      const response = await streamChatResponse(
+      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel, 'chatId:', chatSessionId);
+
+      // Stream the response using the existing chat streaming endpoint
+      const response = await streamTextChatResponse(
         chatSessionId, 
         messageContent, 
         controller.signal,
@@ -374,47 +380,45 @@ function App() {
         const errorMessage = response.status ? `HTTP ${response.status}: ${response.statusText}` : 'Unknown error';
         setMessages(prevMessages => 
           prevMessages.map(msg => 
-            msg.id === aiMessageId ? { ...msg, content: `Error: Did not receive a streamable response. ${errorMessage}` } : msg
+            msg.id === aiMessageId ? { ...msg, content: `Error: Did not receive a streamable response. ${errorMessage}`, rawContent: `Error: Did not receive a streamable response. ${errorMessage}` } : msg
           )
         );
         setOrbAiState('criticalError');
         setIsLoading(false);
         setIsTyping(false);
         return;
-      }
-
-      setOrbAiState('output');
+      }      setOrbAiState('output');
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let aiResponse = '';
-      
-      try {
+        try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            console.log('Text stream completed successfully. Final response length:', aiResponse.length);
             break;
           }
-          
-          const chunk = decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
           aiResponse += chunk;
           setMessages(prevMessages => 
             prevMessages.map(msg => 
-              msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
+              msg.id === aiMessageId ? { ...msg, content: aiResponse, rawContent: aiResponse } : msg
             )
-          );        }
+          );
+        }
         
         // Note: AI response is automatically saved by the streaming endpoint
+        // The backend may log "DUPLICATE MESSAGE DETECTED" but this is normal for streaming responses
         setOrbAiState('success');
       } catch (streamError) {
         if (streamError.name === 'AbortError') {
           console.log('Text stream reading aborted.');
           throw streamError;
-        }
-        console.error("Error reading text stream:", streamError);
+        }        console.error("Error reading text stream:", streamError);
         setOrbAiState('criticalError');
         setMessages(prevMessages => 
           prevMessages.map(msg => 
-            msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+            msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}`, rawContent: msg.content + `\nError reading stream: ${streamError.message}` } : msg
           )
         );
         return;
@@ -436,9 +440,9 @@ function App() {
     } finally {
       setIsLoading(false);
       setIsTyping(false);
-      setAbortController(null);    }
+      setAbortController(null);
+    }
   };
-
   // Helper function to handle multimodal streaming
   const handleMultimodalStream = async (chatSessionId, textContent, file, userMessageId) => {
     const aiMessageId = `agent-${Date.now()}`;
@@ -446,6 +450,7 @@ function App() {
       id: aiMessageId, 
       role: 'ai', 
       content: '', 
+      rawContent: '', // Initialize rawContent for tool call processing
       timestamp: new Date().toISOString() 
     }]);
 
@@ -530,16 +535,15 @@ function App() {
       setOrbAiState('output');
       const reader = response.body.getReader();      const decoder = new TextDecoder();
       
-      try {
-        while (true) {
+      try {        while (true) {
           const { done, value } = await reader.read();          if (done) {
+            console.log('Multimodal stream completed successfully.');
             // Note: AI response is automatically saved by the streaming endpoint
             break;
           }
-          
-          const chunk = decoder.decode(value, { stream: true });          setMessages(prevMessages => 
+            const chunk = decoder.decode(value, { stream: true });          setMessages(prevMessages => 
             prevMessages.map(msg => 
-              msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
+              msg.id === aiMessageId ? { ...msg, content: msg.content + chunk, rawContent: msg.content + chunk } : msg
             )
           );
         }
@@ -575,14 +579,14 @@ function App() {
       setIsLoading(false);
       setIsTyping(false);
       setAbortController(null);    }
-  };
-  // Helper function to handle new multimodal chat creation with streaming
+  };  // Helper function to handle new multimodal chat creation with streaming
   const handleNewMultimodalChatWithStream = async (textContent, file, userMessageId) => {
     const aiMessageId = `agent-${Date.now()}`;
     setMessages(prevMessages => [...prevMessages, { 
       id: aiMessageId, 
       role: 'ai', 
       content: '', 
+      rawContent: '', // Initialize rawContent for tool call processing
       timestamp: new Date().toISOString() 
     }]);
 
@@ -674,12 +678,11 @@ function App() {
           if (done) {
             break;
           }
-          
-          const chunk = decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
           aiResponse += chunk;
           setMessages(prevMessages => 
             prevMessages.map( msg => 
-              msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
+              msg.id === aiMessageId ? { ...msg, content: aiResponse, rawContent: aiResponse } : msg
             )
           );
         }

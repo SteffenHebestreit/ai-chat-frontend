@@ -59,57 +59,68 @@ function MessageCard({ role, content, rawContent, timestamp, isFromHistory, isTy
 
   const messageCardRef = useRef(null);
   const messageContentRef = useRef(null);
-
   // Effect to process content for tool calls - needs to run for both regular and history messages
   useEffect(() => {
+    console.log('MessageCard tool call processing - role:', role, 'contentToRender type:', typeof contentToRender, 'isFromHistory:', isFromHistory);
+    console.log('MessageCard tool call processing - contentToRender preview:', typeof contentToRender === 'string' ? contentToRender.substring(0, 200) + '...' : contentToRender);
+    
     if (role === 'ai') {
       // For AI messages, check if it's a string that might contain tool call status
-      if (typeof contentToRender === 'string') {
-        // Function to extract tool calls with proper bracket matching
+      if (typeof contentToRender === 'string') {// Function to extract tool calls - handles both complete and incomplete tool calls
         const extractToolCalls = (text) => {
           const toolCallMatches = [];
-          const toolCallStartPatterns = [
-            'Calling tool', 'Executing tools?', 'Tool execution', 'Tool result', 
-            'Tool error', 'Tool failed', 'Tool execution failed', 'Tool completed successfully',
-            'Continuing conversation', 'Step [0-9]+', 'Using tool', 'Task complete', 
-            'Task started', 'Processing', 'Tool thinking', 'Tool output', 'Result', 
-            'Executing', 'Tool execution continues'
-          ];
           
-          const startPattern = new RegExp(`\\[(?:${toolCallStartPatterns.join('|')})`, 'g');
+          // Pattern 1: Complete tool calls with proper closing brackets, including surrounding line breaks
+          const completeToolCallPattern = /\n*\[(?:Tool|tool)[^\]]*?\]\n*/gis;
           let match;
+          while ((match = completeToolCallPattern.exec(text)) !== null) {
+            toolCallMatches.push(match[0]);
+          }
           
-          while ((match = startPattern.exec(text)) !== null) {
-            const startIndex = match.index;
-            let bracketCount = 1;
-            let endIndex = match.index + match[0].length;
-            
-            // Find the matching closing bracket, handling nested brackets
-            while (endIndex < text.length && bracketCount > 0) {
-              const char = text[endIndex];
-              if (char === '[') {
-                bracketCount++;
-              } else if (char === ']') {
-                bracketCount--;
-              }
-              endIndex++;
-            }
-            
-            if (bracketCount === 0) {
-              const fullMatch = text.substring(startIndex, endIndex);
-              toolCallMatches.push(fullMatch);
+          // Pattern 2: Incomplete or malformed tool calls that start with [Tool but don't have proper closing
+          // This handles cases where tool calls are truncated or contain complex nested content
+          const incompleteToolCallPattern = /\n*\[(?:Tool|tool)[^[]*?(?=\n\n[A-Z]|\n[A-Z][a-z]|$)\n*/gis;
+          while ((match = incompleteToolCallPattern.exec(text)) !== null) {
+            // Only add if it's not already captured by the complete pattern
+            const potentialMatch = match[0];
+            if (!toolCallMatches.some(existing => existing.includes(potentialMatch) || potentialMatch.includes(existing))) {
+              toolCallMatches.push(potentialMatch);
             }
           }
           
+          // Pattern 3: Other known tool call patterns, including surrounding line breaks
+          const otherPatterns = [
+            /\n*\[Calling tool[^\]]*?\]\n*/gis,
+            /\n*\[Executing tools?[^\]]*?\]\n*/gis,
+            /\n*\[Tool calls requested by LLM[^\]]*?\]\n*/gis
+          ];
+          
+          for (const pattern of otherPatterns) {
+            while ((match = pattern.exec(text)) !== null) {
+              if (!toolCallMatches.includes(match[0])) {
+                toolCallMatches.push(match[0]);
+              }
+            }
+          }
+          
+          // Sort matches by their position in the original text
+          toolCallMatches.sort((a, b) => text.indexOf(a) - text.indexOf(b));
+          
           return toolCallMatches;
         };
-        
-        // Extract tool calls using the improved function
+          // Extract tool calls using the improved function
         const matches = extractToolCalls(contentToRender);
-        
-        if (matches && matches.length > 0) {
+        console.log('MessageCard tool call extraction - found matches:', matches.length, matches);
+          if (matches && matches.length > 0) {
           // Store all tool call statuses for dropdown in chronological order with deduplication
-          const statuses = matches.map(match => match.slice(1, -1)); // Remove brackets
+          const statuses = matches.map(match => {
+            // Remove brackets and clean up line breaks for display
+            let cleanMatch = match.replace(/^\n*|\n*$/g, ''); // Remove leading/trailing line breaks
+            if (cleanMatch.startsWith('[') && cleanMatch.endsWith(']')) {
+              cleanMatch = cleanMatch.slice(1, -1); // Remove brackets
+            }
+            return cleanMatch.trim();
+          });
           
           // Deduplicate consecutive identical tool calls
           const deduplicatedStatuses = [];
@@ -121,17 +132,27 @@ function MessageCard({ role, content, rawContent, timestamp, isFromHistory, isTy
           }
           
           setToolCallStatuses(deduplicatedStatuses);
-          
-          // Get the last/most recent tool status for main display
+            // Get the last/most recent tool status for main display
           const lastMatch = matches[matches.length - 1];
-          setToolCallStatus(lastMatch.slice(1, -1)); // Remove brackets
-          
-          // Remove tool calls from the main content to avoid duplication
+          let cleanLastMatch = lastMatch.replace(/^\n*|\n*$/g, ''); // Remove leading/trailing line breaks
+          if (cleanLastMatch.startsWith('[') && cleanLastMatch.endsWith(']')) {
+            cleanLastMatch = cleanLastMatch.slice(1, -1); // Remove brackets
+          }
+          setToolCallStatus(cleanLastMatch.trim());// Remove tool calls from the main content to avoid duplication
           let contentWithoutToolCalls = contentToRender;
           matches.forEach(match => {
             contentWithoutToolCalls = contentWithoutToolCalls.replace(match, '');
           });
-          contentWithoutToolCalls = contentWithoutToolCalls.trim();
+            // Clean up excessive line breaks and whitespace
+          contentWithoutToolCalls = contentWithoutToolCalls
+            // Replace multiple consecutive line breaks (3 or more) with at most 2
+            .replace(/\n{3,}/g, '\n\n')
+            // Remove line breaks that are only whitespace
+            .replace(/^\s*\n+/g, '')
+            .replace(/\n\s*$/g, '')
+            // Remove any trailing/leading whitespace
+            .trim();
+            
           setProcessedContent(contentWithoutToolCalls);
         } else {
           setToolCallStatuses([]);
@@ -170,20 +191,24 @@ function MessageCard({ role, content, rawContent, timestamp, isFromHistory, isTy
     } else {
       setShowScrollToTop(false);
     }
-  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes
-
-  // Effect to normalize markdown content from history
+  }, [isExpanded, processedContent]); // Re-check when content changes or expansion state changes  // Effect to normalize markdown content from history
   useEffect(() => {
-    // Prioritize rawContent if available, but don't apply tool call processing here
-    // (that's handled in the separate useEffect for tool calls)
-    if (rawContent) {
-      // If we have rawContent, make it available for tool call processing
-      setContentToRender(rawContent);
+    // For history messages, always prefer rawContent if available and substantial
+    if (rawContent && rawContent.length > 0) {
+      // Use rawContent which should contain the complete response with thinking blocks and tool calls
+      // Convert escaped newlines to actual newlines for proper processing
+      const processedRawContent = rawContent.replace(/\\n/g, '\n');
+      setContentToRender(processedRawContent);
     } else if (isFromHistory && typeof content === 'string') {
-      // Fall back to normalizing the regular content if no rawContent is available
-      setContentToRender(normalizeMarkdownContent(content));
-    } else {
+      // Fallback to content for history messages if no rawContent
+      // Also process escaped newlines in content
+      const processedContent = content.replace(/\\n/g, '\n');
+      setContentToRender(processedContent);
+    } else if (content) {
+      // For new messages without rawContent, use content as-is (should already have proper newlines)
       setContentToRender(content);
+    } else {
+      setContentToRender('');
     }
   }, [content, rawContent, isFromHistory]);
 
@@ -307,9 +332,8 @@ function MessageCard({ role, content, rawContent, timestamp, isFromHistory, isTy
                   ))}
                 </div>              )}
             </div>
-          )}
-          <ContentRenderer 
-            content={processedContent} // Changed from contentToRender
+          )}          <ContentRenderer 
+            content={processedContent} // Pass processed content (tool calls removed, thinking preserved)
             rawContent={rawContent}
             isTyping={isTyping && !toolCallStatus}
           />

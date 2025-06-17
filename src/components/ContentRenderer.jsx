@@ -379,17 +379,14 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
         // Update position
         currentPosition = text.length;
       }
-    }
-      // Add any remaining content
+    }    // Add any remaining content
     if (currentPosition < text.length) {
       newProcessedContent += text.substring(currentPosition);
     }
     
-    // Apply tool call highlighting to the processed content
     setProcessedContent(newProcessedContent);
     setThinkingSections(newThinkingSections);
-    setIsThinking(inThinking);
-  };
+    setIsThinking(inThinking);  };
 
   return (
     <div className="content-renderer">
