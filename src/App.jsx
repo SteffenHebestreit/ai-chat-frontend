@@ -7,17 +7,13 @@ import UserInput from './components/UserInput';
 import ModelSelector from './components/ModelSelector';
 import {
   createNewChat,
-  saveUserMessage,
   streamChatResponse,
-  saveAgentResponse,
   fetchChatDetails,
   deleteChat as apiDeleteChat,
-  createMultimodalMessagePayload,
-  streamMultimodalChatResponse,
-  fetchLlmCapabilities,
-  saveMultimodalUserMessage,
+  createMultimodalChatWithStream,
+  fetchLlmCapabilitiesWithOverrides,
   parseMultimodalContent,
-  normalizeMarkdownContent
+  streamMultimodalMessage
 } from './services/chatService';
 import './App.css';
 
@@ -51,11 +47,10 @@ function App() {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages]); // Scroll when messages array changes
-  // Add this useEffect to fetch LLM capabilities on component mount
+  }, [messages]); // Scroll when messages array changes  // Add this useEffect to fetch LLM capabilities on component mount
   useEffect(() => {
     const getLlmCapabilities = async () => {      try {
-        const data = await fetchLlmCapabilities();
+        const data = await fetchLlmCapabilitiesWithOverrides();
         if (data && Array.isArray(data)) {
           setLlmCapabilities(data);
         } else if (data && data.result && Array.isArray(data.result)) {
@@ -63,10 +58,20 @@ function App() {
         }
       } catch (error) {
         console.error('Error fetching LLM capabilities:', error);
-      }
-    };
+      }    };
     
     getLlmCapabilities();
+    
+    // Listen for capability override changes from settings
+    const handleCapabilityOverrideChange = () => {
+      getLlmCapabilities(); // Refresh capabilities when overrides change
+    };
+    
+    window.addEventListener('capabilityOverrideChange', handleCapabilityOverrideChange);
+    
+    return () => {
+      window.removeEventListener('capabilityOverrideChange', handleCapabilityOverrideChange);
+    };
   }, []);  // Handle file selection
   const handleFileSelect = (file) => {
     setSelectedFile(file);
@@ -222,53 +227,14 @@ function App() {
       } else {
         // Multimodal message flow for images/PDFs
         let chatSessionId = currentChatId;
-        let isNewChat = false;
-
-        // Prepare the message payload based on whether there's a file or not
-        let messagePayload;
-        try {
-          messagePayload = await createMultimodalMessagePayload(userMessageContent, selectedFile);
-        } catch (err) {
-          console.error('Error preparing message payload:', err);
-          setMessages(prev => [...prev, { id: 'error-payload', role: 'system', content: `Error: Could not prepare message. ${err.message}` }]);
-          setOrbAiState('criticalError');
-          setIsLoading(false);
-          setIsTyping(false);
-          return;
-        }
 
         if (!chatSessionId) {
-          try {
-            const data = await createNewChat(messagePayload);
-
-            if (data && data.result && data.result.id) {
-              chatSessionId = data.result.id;
-              setCurrentChatId(chatSessionId);
-              setSelectedChatId(chatSessionId);
-              setRefreshHistoryKey(Date.now());
-              isNewChat = true;
-            } else {
-              throw new Error('Failed to create chat or retrieve chat ID.');
-            }
-          } catch (err) {
-            console.error('Error creating new chat:', err);
-            setMessages(prev => [...prev, { id: 'error-create', role: 'system', content: `Error: Could not initiate chat session. ${err.message}` }]);
-            setOrbAiState('criticalError');
-            setIsLoading(false);
-            setIsTyping(false);
-            return;
-          }
-        } else if (!isNewChat) {
-          try {
-            await saveMultimodalUserMessage(chatSessionId, messagePayload);
-          } catch (err) {
-            console.error('Error saving user message to existing chat:', err);
-            setOrbAiState('criticalError');
-          }
+          // For new chats, use the new create multimodal chat endpoint with streaming
+          await handleNewMultimodalChatWithStream(userMessageContent, selectedFile, userMessageId);
+        } else {
+          // For existing chats, use streaming endpoint
+          await handleMultimodalStream(chatSessionId, userMessageContent, selectedFile, userMessageId);
         }
-        
-        // Continue with multimodal streaming
-        await handleMultimodalStream(chatSessionId, messagePayload, userMessageId);
       }
     }
       // Clear input and file after sending
@@ -321,8 +287,10 @@ function App() {
                  (Array.isArray(msg.content) || 
                   (msg.content.content && Array.isArray(msg.content.content))));              if (isMultimodal) {
                 // Use utility function to parse multimodal content
+                console.log('Found multimodal content in history:', msg.content);
                 try {
                   const parsedContent = parseMultimodalContent(msg.content);
+                  console.log('Parsed multimodal content result:', parsedContent);
                   // Instead of JSON.stringify, preserve the structure for ContentRenderer to handle properly
                   processedContent = parsedContent;
                 } catch (err) {
@@ -330,7 +298,7 @@ function App() {
                   // Fallback to original content if parsing fails
                   processedContent = msg.content;
                 }
-              }              return {
+              }return {
                 id: msg.id,
                 role: msg.role === 'agent' ? 'ai' : msg.role, // Normalize 'agent' to 'ai'
                 content: processedContent,
@@ -395,65 +363,62 @@ function App() {
 
       // Log the model being used for debugging
       const modelId = selectedModel?.id || selectedModelId || '1';
-      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel);
-
-      // Stream the response
+      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel);      // Stream the response
       const response = await streamChatResponse(
         chatSessionId, 
         messageContent, 
         controller.signal,
         modelId
-      );
-
-      if (response.body) {
-        setOrbAiState('output');
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let aiResponse = '';
-        
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
-            
-            const chunk = decoder.decode(value, { stream: true });
-            aiResponse += chunk;
-            setMessages(prevMessages => 
-              prevMessages.map(msg => 
-                msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
-              )
-            );
-          }
-        } catch (streamError) {
-          if (streamError.name === 'AbortError') {
-            console.log('Text stream reading aborted.');
-            throw streamError;
-          }
-          console.error("Error reading text stream:", streamError);
-          setOrbAiState('criticalError');
-          setMessages(prevMessages => 
-            prevMessages.map(msg => 
-              msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
-            )
-          );
-          return;
-        }
-
-        // Save AI response
-        await saveAgentResponse(chatSessionId, aiResponse);      } else {
+      );      if (!response.body) {
+        console.error('No response body for streaming. Response:', response);
+        const errorMessage = response.status ? `HTTP ${response.status}: ${response.statusText}` : 'Unknown error';
         setMessages(prevMessages => 
           prevMessages.map(msg => 
-            msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
+            msg.id === aiMessageId ? { ...msg, content: `Error: Did not receive a streamable response. ${errorMessage}` } : msg
           )
         );
         setOrbAiState('criticalError');
         setIsLoading(false);
         setIsTyping(false);
-        return;      }
+        return;
+      }
+
+      setOrbAiState('output');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let aiResponse = '';
       
-      setOrbAiState('success');
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          aiResponse += chunk;
+          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
+            )
+          );        }
+        
+        // Note: AI response is automatically saved by the streaming endpoint
+        setOrbAiState('success');
+      } catch (streamError) {
+        if (streamError.name === 'AbortError') {
+          console.log('Text stream reading aborted.');
+          throw streamError;
+        }
+        console.error("Error reading text stream:", streamError);
+        setOrbAiState('criticalError');
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+          )
+        );
+        return;
+      }
       // Note: No need to refresh chat history for existing chats - messages are already displayed locally
     } catch (err) {
       console.error('Error in text message flow:', err);
@@ -475,7 +440,7 @@ function App() {
   };
 
   // Helper function to handle multimodal streaming
-  const handleMultimodalStream = async (chatSessionId, messagePayload, userMessageId) => {
+  const handleMultimodalStream = async (chatSessionId, textContent, file, userMessageId) => {
     const aiMessageId = `agent-${Date.now()}`;
     setMessages(prevMessages => [...prevMessages, { 
       id: aiMessageId, 
@@ -504,9 +469,9 @@ function App() {
       console.log('Starting multimodal stream with initial model ID:', defaultLlmId, 'selectedModel:', selectedModel);
       
       // Check if selected model supports the file type
-      if (selectedModelId && selectedModel && selectedFile) {
-        const fileType = selectedFile.type.startsWith('image/') ? 'image' : 
-                        (selectedFile.type === 'application/pdf' ? 'pdf' : 'unknown');
+      if (selectedModelId && selectedModel && file) {
+        const fileType = file.type.startsWith('image/') ? 'image' : 
+                        (file.type === 'application/pdf' ? 'pdf' : 'unknown');
         
         const selectedSupportsFile = (fileType === 'image' && (selectedModel.supportsImage || selectedModel.capabilities?.image)) ||
                                    (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf));
@@ -548,56 +513,51 @@ function App() {
 
       console.log('Final model ID for multimodal stream:', defaultLlmId);
 
-      const response = await streamMultimodalChatResponse(chatSessionId, messagePayload, controller.signal, defaultLlmId);
+      const response = await streamMultimodalMessage(chatSessionId, textContent, file, controller.signal, defaultLlmId);
 
-      if (response.body) {
-        setOrbAiState('output');
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedResponseForSaving = '';
-        
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              if (chatSessionId && accumulatedResponseForSaving.trim()) {
-                try {
-                  await saveAgentResponse(chatSessionId, accumulatedResponseForSaving);
-                } catch (err) {
-                  console.error('Error saving AI response:', err);
-                }
-              }
-              break;
-            }
-            
-            const chunk = decoder.decode(value, { stream: true });            accumulatedResponseForSaving += chunk;
-            setMessages(prevMessages => 
-              prevMessages.map(msg => 
-                msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
-              )
-            );
-          }
-        } catch (streamError) {
-          if (streamError.name === 'AbortError') {
-            console.log('Stream reading aborted.');
-            throw streamError;
-          }          console.error("Error reading stream:", streamError);
-          setOrbAiState('criticalError');
-          setMessages(prevMessages => 
-            prevMessages.map(msg => 
-              msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
-            )
-          );
-          return;}
-        
-        setOrbAiState('success');
-        // Note: No need to refresh chat history for existing chats - messages are already displayed locally      } else {
+      if (!response.body) {
+        console.error('No response body for multimodal streaming. Response:', response);
+        const errorMessage = response.status ? `HTTP ${response.status}: ${response.statusText}` : 'Unknown error';
         setMessages(prevMessages => 
           prevMessages.map(msg => 
-            msg.id === aiMessageId ? { ...msg, content: 'Error: Did not receive a streamable response.' } : msg
+            msg.id === aiMessageId ? { ...msg, content: `Error: Did not receive a streamable response. ${errorMessage}` } : msg
           )
         );
         setOrbAiState('criticalError');
+        return;
+      }
+
+      setOrbAiState('output');
+      const reader = response.body.getReader();      const decoder = new TextDecoder();
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();          if (done) {
+            // Note: AI response is automatically saved by the streaming endpoint
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });          setMessages(prevMessages => 
+            prevMessages.map(msg => 
+              msg.id === aiMessageId ? { ...msg, content: msg.content + chunk } : msg
+            )
+          );
+        }
+        
+        setOrbAiState('success');
+        // Note: No need to refresh chat history for existing chats - messages are already displayed locally
+      } catch (streamError) {
+        if (streamError.name === 'AbortError') {
+          console.log('Stream reading aborted.');
+          throw streamError;
+        }        console.error("Error reading stream:", streamError);
+        setOrbAiState('criticalError');
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === aiMessageId ? { ...msg, content: msg.content + `\nError reading stream: ${streamError.message}` } : msg
+          )
+        );
+        return;
       }
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -615,6 +575,149 @@ function App() {
       setIsLoading(false);
       setIsTyping(false);
       setAbortController(null);    }
+  };
+  // Helper function to handle new multimodal chat creation with streaming
+  const handleNewMultimodalChatWithStream = async (textContent, file, userMessageId) => {
+    const aiMessageId = `agent-${Date.now()}`;
+    setMessages(prevMessages => [...prevMessages, { 
+      id: aiMessageId, 
+      role: 'ai', 
+      content: '', 
+      timestamp: new Date().toISOString() 
+    }]);
+
+    const controller = new AbortController();
+    setAbortController(controller);
+    
+    try {
+      // Determine which model to use for multimodal content
+      let defaultLlmId = selectedModelId || '1';
+      
+      // Log the model being used for debugging      console.log('Creating new multimodal chat with model ID:', defaultLlmId, 'selectedModel:', selectedModel);
+      
+      // Check if selected model supports the file type
+      if (selectedModelId && selectedModel && file) {
+        const fileType = file.type.startsWith('image/') ? 'image' : 
+                        (file.type === 'application/pdf' ? 'pdf' : 'unknown');
+        
+        const selectedSupportsFile = (fileType === 'image' && (selectedModel.supportsImage || selectedModel.capabilities?.image)) ||
+                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf));
+        
+        if (!selectedSupportsFile && llmCapabilities.length > 0) {
+          // Find an LLM that supports the file type
+          const capableLlm = llmCapabilities.find(llm => {
+            if (fileType === 'image') {
+              return llm.supportsImage || llm.capabilities?.image || 
+                     (llm.supportedTypes && llm.supportedTypes.includes('image'));
+            }
+            if (fileType === 'pdf') {
+              return llm.supportsPdf || llm.capabilities?.pdf ||
+                     (llm.supportedTypes && llm.supportedTypes.includes('pdf'));
+            }
+            return false;
+          });
+          
+          if (capableLlm) {
+            defaultLlmId = capableLlm.id || capableLlm.llmId || '1';
+            console.warn(`Selected model doesn't support ${fileType}, using ${capableLlm.name || defaultLlmId} instead`);
+          }
+        }
+      } else if (llmCapabilities.length > 0) {
+        // No model selected, find an appropriate one
+        const imageCapableLlm = llmCapabilities.find(llm => 
+          llm.supportsImage || llm.capabilities?.image || 
+          (llm.supportedTypes && llm.supportedTypes.includes('image'))
+        );
+        
+        if (imageCapableLlm) {
+          defaultLlmId = imageCapableLlm.id || imageCapableLlm.llmId || '1';
+        } else {
+          // Fall back to the first available LLM
+          const firstLlm = llmCapabilities[0];
+          defaultLlmId = firstLlm.id || firstLlm.llmId || '1';
+        }
+      }
+
+      console.log('Final model ID for new multimodal chat:', defaultLlmId);
+
+      const response = await createMultimodalChatWithStream(textContent, file, controller.signal, defaultLlmId);      if (!response.body) {
+        console.error('No response body for multimodal chat creation. Response:', response);
+        const errorMessage = response.status ? `HTTP ${response.status}: ${response.statusText}` : 'Unknown error';
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === aiMessageId ? { ...msg, content: `Error: Did not receive a streamable response. ${errorMessage}` } : msg
+          )
+        );
+        setOrbAiState('criticalError');
+        return;
+      }
+
+      // Extract chat ID from response headers
+      const chatId = response.headers.get('X-Chat-Id');
+      if (chatId) {
+        setCurrentChatId(chatId);
+        setSelectedChatId(chatId);
+        setRefreshHistoryKey(Date.now());
+        console.log('Received chat ID from header:', chatId);
+      } else {
+        console.warn('No chat ID received in response headers');
+      }
+
+      setOrbAiState('output');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let aiResponse = '';
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          aiResponse += chunk;
+          setMessages(prevMessages => 
+            prevMessages.map( msg => 
+              msg.id === aiMessageId ? { ...msg, content: aiResponse } : msg
+            )
+          );
+        }
+        
+        setOrbAiState('success');
+        console.log('New multimodal chat created successfully with ID:', chatId);
+      } catch (streamError) {
+        if (streamError.name === 'AbortError') {
+          console.log('New multimodal chat stream reading aborted.');
+          throw streamError;
+        }
+        console.error("Error reading new multimodal chat stream:", streamError);
+        setOrbAiState('criticalError');
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === aiMessageId ? { ...msg, content: aiResponse + `\nError reading stream: ${streamError.message}` } : msg
+          )
+        );
+        return;
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('New multimodal chat creation aborted by user.');
+        setOrbAiState('default');
+      } else {
+        console.error('Error creating new multimodal chat:', error);
+        setMessages(prevMessages =>
+          prevMessages.map( msg =>
+            msg.id === aiMessageId ? { ...msg, content: `Error: ${error.message}` } : msg
+          )
+        );
+        setOrbAiState('criticalError');
+      }
+    } finally {
+      setIsLoading(false);
+      setIsTyping(false);
+      setAbortController(null);
+    }
   };
 
   return (

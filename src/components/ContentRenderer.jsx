@@ -3,8 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
+import { parseMultimodalContent, normalizeMarkdownContent } from '../services/chatService';
 import './ContentRenderer.css';
+import 'katex/dist/katex.min.css'; // KaTeX CSS for math rendering
 
 // Helper for syntax highlighting in ReactMarkdown
 const syntaxHighlighterComponents = {
@@ -65,12 +69,11 @@ const ThinkingSection = ({ content, isTyping }) => {
           />
         </svg>
       </div>
-      
-      {isExpanded && (        <div className="thinking-content">
+        {isExpanded && (        <div className="thinking-content">
           <ReactMarkdown
             children={content}
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeRaw, rehypeKatex]}
             components={syntaxHighlighterComponents}
           />
         </div>
@@ -83,25 +86,48 @@ const ThinkingSection = ({ content, isTyping }) => {
 const MediaRenderer = ({ mediaContent }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  console.log('MediaRenderer received content:', mediaContent);
+
   // Function to toggle image expansion
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
   };
-
-  // Determine media type
+  // Determine media type and extract URL more robustly
   const isImage = mediaContent.type === 'image_url';
   const isPdf = mediaContent.type === 'file_url' && 
-                (mediaContent.file_url.url.includes('application/pdf') || 
-                 mediaContent.file_url.url.endsWith('.pdf'));
-
-  const mediaUrl = isImage ? mediaContent.image_url.url : 
-                  (isPdf ? mediaContent.file_url.url : null);
+                (mediaContent.file_url?.url?.includes('application/pdf') || 
+                 mediaContent.file_url?.url?.endsWith('.pdf'));
+  // Extract URL with fallbacks for different content structures
+  let mediaUrl = null;
+  if (isImage) {
+    mediaUrl = mediaContent.image_url?.url || mediaContent.url;
+    console.log('MediaRenderer - extracted image URL:', mediaUrl);
+  } else if (isPdf) {
+    mediaUrl = mediaContent.file_url?.url || mediaContent.url;
+    console.log('MediaRenderer - extracted PDF URL:', mediaUrl);
+  } else if (mediaContent.type === 'file_url') {
+    // Generic file URL handling
+    mediaUrl = mediaContent.file_url?.url || mediaContent.url;
+    console.log('MediaRenderer - extracted file URL:', mediaUrl);
+  }
 
   // If the content is not media we can render, return null
-  if (!mediaUrl) return null;
-
-  if (isImage) {
-    // Render an image
+  if (!mediaUrl) {
+    console.warn('No media URL found for content:', mediaContent);
+    return null;
+  }  if (isImage) {
+    // Validate base64 image data
+    const isValidBase64Image = mediaUrl.startsWith('data:image/') && mediaUrl.includes('base64,');
+    console.log('MediaRenderer - is valid base64 image:', isValidBase64Image);
+    
+    if (isValidBase64Image) {
+      // Check if base64 data length is reasonable
+      const base64Data = mediaUrl.split('base64,')[1];
+      console.log('MediaRenderer - base64 data length:', base64Data?.length || 0);
+      console.log('MediaRenderer - base64 data preview:', base64Data?.substring(0, 50) + '...');
+    }
+    
+    // Render an image with error handling
     return (
       <div className={`media-container ${isExpanded ? 'expanded' : ''}`} onClick={toggleExpand}>
         <img
@@ -109,10 +135,22 @@ const MediaRenderer = ({ mediaContent }) => {
           alt="Uploaded content"
           className="uploaded-image"
           title={isExpanded ? "Click to shrink" : "Click to expand"}
+          onLoad={() => {
+            console.log('MediaRenderer - image loaded successfully');
+          }}
+          onError={(e) => {
+            console.error('MediaRenderer - failed to load image:', mediaUrl);
+            console.error('MediaRenderer - image error event:', e);
+            e.target.style.display = 'none';
+            e.target.nextSibling.style.display = 'block';
+          }}
         />
+        <div style={{display: 'none', padding: '20px', textAlign: 'center', color: '#666'}}>
+          📷 Image failed to load
+        </div>
       </div>
     );
-  } else if (isPdf) {
+  }else if (isPdf) {
     // For PDFs embedded as data URLs
     if (mediaUrl.startsWith('data:application/pdf')) {
       return (
@@ -156,10 +194,12 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
   const [thinkingSections, setThinkingSections] = useState([]);
   const [isThinking, setIsThinking] = useState(false);
   const [currentThinking, setCurrentThinking] = useState('');
-  const [mediaContents, setMediaContents] = useState([]);// Process content to extract thinking sections and handle multimodal content
+  const [mediaContents, setMediaContents] = useState([]);  // Process content to extract thinking sections and handle multimodal content
   useEffect(() => {
     // Choose content source - prioritize rawContent if available
     const contentToProcess = content;
+    
+    console.log('ContentRenderer processing content:', typeof contentToProcess, contentToProcess);
     
     if (!contentToProcess) {
       setProcessedContent('');
@@ -167,33 +207,7 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
       setIsThinking(false);
       setCurrentThinking('');
       setMediaContents([]);
-      return;
-    }
-    
-    // Helper function to normalize markdown content
-    const normalizeMarkdown = (text) => {
-      if (typeof text !== 'string') return text;
-      
-      // Fix markdown headers without proper spacing after hashes
-      // Convert: ###Title -> ### Title
-      text = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
-      
-      // Handle --- headers specifically
-      // This ensures that lines like "--- ### 1." are properly rendered
-      text = text.replace(/^(---\s*)(#+)(\s*\d+\.)/gm, '$1\n$2$3');
-      
-      // Ensure proper spacing after horizontal rules
-      text = text.replace(/^(---\s*)$/gm, '$1\n');
-      
-      // Ensure proper line breaks for list items and paragraphs
-      // Add double spaces at the end of lines that should have a line break
-      text = text.replace(/^(-|\d+\.)\s+(.+)$/gm, '$1 $2  ');
-      
-      // Preserve line breaks between different sections
-      text = text.replace(/\n(\s*)(#{1,6})\s+/g, '\n\n$1$2 ');
-      
-      return text;
-    };
+      return;    }
     
     // Try to parse if the content might be JSON (for multimodal messages)
     try {
@@ -212,12 +226,11 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
           });
             // Set the text content for markdown processing
           setProcessedContent(textContents.join('\n\n'));
-          
-          // Set media contents for rendering
+            // Set media contents for rendering
           setMediaContents(newMediaContents);
           
           // Process thinking sections in the text content
-          processThinkingSections(normalizeMarkdown(textContents.join('\n\n')));
+          processThinkingSections(normalizeMarkdownContent(textContents.join('\n\n')));
           return;
         }
       }      // Otherwise check if it's a string that might be JSON
@@ -239,35 +252,64 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
             });
             // Set the text content for markdown processing
             setProcessedContent(textContents.join('\n\n'));
-            
-            // Set media contents for rendering
+              // Set media contents for rendering
             setMediaContents(newMediaContents);
             
             // Process thinking sections in the text content
-            processThinkingSections(normalizeMarkdown(textContents.join('\n\n')));
+            processThinkingSections(normalizeMarkdownContent(textContents.join('\n\n')));
             return;
           }
         } catch (e) {
           // If parsing fails, continue with normal processing
           console.warn('Failed to parse JSON content:', e);
         }
-      }
-        // Handle special case of "Multimodal content:" prefix
+      }        // Handle special case of "Multimodal content:" prefix
       if (typeof content === 'string' && content.includes('Multimodal content:')) {
         // Try to extract meaningful content or show a placeholder
-        const fallbackText = content.includes('ArrayList') 
-          ? '📎 *This message contained attached files that cannot be displayed in chat history*'
-          : content;
+        let fallbackText;
+        if (content.includes('ArrayList')) {
+          fallbackText = '📎 *This message contained attached files that cannot be displayed in chat history*';
+        } else {
+          // Try to extract any visible text content
+          const contentAfterPrefix = content.split('Multimodal content:')[1];
+          if (contentAfterPrefix && contentAfterPrefix.trim()) {
+            // If there's content after the prefix, try to parse it
+            try {
+              const parsedContent = parseMultimodalContent(contentAfterPrefix);              if (Array.isArray(parsedContent) && parsedContent.length > 0) {
+                const textContents = [];
+                const newMediaContents = [];
+                
+                parsedContent.forEach(item => {
+                  console.log('Processing content item:', item);
+                  if (item.type === 'text') {
+                    textContents.push(item.text || '');
+                  } else if (item.type === 'image_url' || item.type === 'file_url') {
+                    newMediaContents.push(item);
+                  }
+                });
+                  console.log('Extracted text contents:', textContents);
+                console.log('Extracted media contents:', newMediaContents);
+                
+                setProcessedContent(textContents.join('\n\n'));
+                setMediaContents(newMediaContents);
+                processThinkingSections(normalizeMarkdownContent(textContents.join('\n\n')));
+                return;
+              }
+            } catch (e) {
+              console.warn('Failed to parse content after Multimodal prefix:', e);
+            }
+          }
+          fallbackText = content;
+        }
         
-        setProcessedContent(fallbackText);
-        setMediaContents([]);
-        processThinkingSections(normalizeMarkdown(fallbackText));
+        setProcessedContent(fallbackText);        setMediaContents([]);
+        processThinkingSections(normalizeMarkdownContent(fallbackText));
         return;
       }
     } catch (e) {
       // If parsing fails, it's not JSON, so continue with normal processing
     }// Process as regular text content with potential thinking sections
-    processThinkingSections(normalizeMarkdown(content));
+    processThinkingSections(normalizeMarkdownContent(content));
     setMediaContents([]);
   }, [content]);
 
@@ -375,13 +417,12 @@ const ContentRenderer = ({ content, isTyping, rawContent }) => {
           content={section.content}
           isTyping={false}
         />
-      ))}
-        {/* Regular content */}
+      ))}        {/* Regular content */}
       {processedContent && (
         <ReactMarkdown
           children={processedContent}
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeRaw, rehypeKatex]}
           components={syntaxHighlighterComponents}
         />
       )}

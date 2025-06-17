@@ -1,6 +1,82 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './ChatHistoryPanel.css';
-import { fetchChatHistory, deleteChat as apiDeleteChat } from '../services/chatService';
+import { fetchChatHistory, deleteChat as apiDeleteChat, parseMultimodalContent } from '../services/chatService';
+
+// Utility function to extract a clean title from chat content
+const extractCleanTitle = (title) => {
+  if (!title) return 'New Chat';
+  
+  // If it's already a clean title, return it
+  if (typeof title === 'string' && !title.includes('[{') && !title.includes('type=') && !title.includes('Multimodal content:')) {
+    return title.length > 50 ? title.substring(0, 50) + '...' : title;
+  }
+    // Handle multimodal content titles
+  if (typeof title === 'string' && (title.includes('[{') || title.includes('type=') || title.includes('Multimodal content:'))) {
+    try {
+      // Try to parse multimodal content to extract text
+      const parsedContent = parseMultimodalContent(title);
+      
+      if (Array.isArray(parsedContent)) {
+        // Find the first text item
+        const textItem = parsedContent.find(item => item.type === 'text' && item.text);
+        if (textItem && textItem.text) {
+          const cleanText = textItem.text.trim();
+          if (cleanText && cleanText !== 'null') {
+            return cleanText.length > 50 ? cleanText.substring(0, 50) + '...' : cleanText;
+          }
+        }
+        
+        // If no text content found, create a descriptive title
+        const hasImages = parsedContent.some(item => item.type === 'image_url');
+        const hasFiles = parsedContent.some(item => item.type === 'file_url');
+        
+        if (hasImages && hasFiles) {
+          return '📎 Chat with files and images';
+        } else if (hasImages) {
+          return '🖼️ Chat with images';
+        } else if (hasFiles) {
+          return '📄 Chat with files';
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse multimodal title:', e, 'Raw title:', title);
+    }
+    
+    // Fallback for various multimodal formats
+    if (title.includes('ArrayList')) {
+      return '📎 Chat with attachments';
+    }
+      // Try to extract any readable text from the raw format
+    // Improved regex patterns to handle various formats including quoted strings
+    const patterns = [
+      // Pattern for quoted text like text="describe this image"
+      /text=["']([^"']+)["']/g,
+      // Pattern for unquoted text like text=describe or text=hello world
+      /text=([^,}\]]+?)(?=[,}\]]|$)/g,
+      // Pattern for text: formats
+      /text:\s*["']([^"']+)["']/g,
+      /text:\s*([^,}\]]+?)(?=[,}\]]|$)/g
+    ];
+    
+    for (const pattern of patterns) {
+      const matches = Array.from(title.matchAll(pattern));
+      for (const match of matches) {
+        let extractedText = match[1]?.trim();
+        if (extractedText && extractedText !== 'null' && extractedText !== '') {
+          // Clean up any remaining brackets or special characters
+          extractedText = extractedText.replace(/[{}[\]]/g, '').trim();
+          if (extractedText) {
+            return extractedText.length > 50 ? extractedText.substring(0, 50) + '...' : extractedText;
+          }
+        }
+      }
+    }
+    
+    return '💬 Multimodal Chat';
+  }
+  
+  return title || 'New Chat';
+};
 
 function ChatHistoryPanel({ onSelectChat, selectedChatId, onClose, isOpen, refreshHistoryKey, onDeleteChat }) {
   const [chats, setChats] = useState([]);
@@ -148,7 +224,7 @@ function ChatHistoryPanel({ onSelectChat, selectedChatId, onClose, isOpen, refre
                   </span>
                 )}
                 <div className="chat-header">
-                  <h3 className="chat-title">{chat.title || 'New Chat'}</h3>
+                  <h3 className="chat-title">{extractCleanTitle(chat.title)}</h3>
                   <span className="chat-time">{formatDate(chat.updatedAt)}</span>
                 </div>
               </div>

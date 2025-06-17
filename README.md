@@ -236,13 +236,13 @@ A component intended for application settings.
 
 ### `services/chatService.js`
 Enhanced API service layer with comprehensive model and multimodal support.
-*   **Enhanced Functions**:
-    *   **Model Management**: `fetchLlmCapabilities()` - Retrieves available models and their capabilities
-    *   **Text Messaging**: `streamChatResponse()` - Enhanced with model ID parameter for text-only conversations
-    *   **Multimodal Support**: `streamMultimodalChatResponse()` - Handles file uploads with model routing
-    *   **Content Processing**: Support for text file content integration and multimodal message payloads
-    *   **Legacy Functions**: All existing chat management functions (create, save, delete, history)
-    *   **Model-Aware Routing**: Automatic model selection based on content type compatibility
+*   **Functions**:
+    *   **Model Management**: `fetchLlmCapabilitiesWithOverrides()` - Retrieves available models and their capabilities, applying any user-defined overrides.
+    *   **Chat Management**: `createNewChat`, `fetchChatHistory`, `fetchChatDetails`, `deleteChat`.
+    *   **Messaging**: `saveUserMessage`, `saveAgentResponse`.
+    *   **Streaming**: 
+        *   `streamChatResponse()`: Handles text-only conversations.
+        *   `createMultimodalChatWithStream()`: Creates a new chat and streams the response for messages that include files.
 
 ### `config/apiConfig.js`
 Provides configuration for the backend API URL.
@@ -310,6 +310,12 @@ Serves the production build locally to preview it before deployment.
 *   **Cleaner Message Display**: Streamlined message card layout with better separation between tool progress indicators and main content
 *   **Consistent Visual Theming**: Link colors now align with the application's overall color scheme, providing a more cohesive user experience
 *   **Error Resilience**: Improved error handling for multimodal content parsing with graceful fallbacks to preserve message display
+
+## License
+
+This project is licensed under the **Creative Commons Attribution-NonCommercial 4.0 International License**. See the [LICENSE](LICENSE) file for details.
+
+This license requires that you give credit to the creator, **Steffen Hebestreit**, and that you do not use this work for commercial purposes.
 
 ## Learn More
 
