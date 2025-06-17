@@ -56,6 +56,50 @@ export const saveUserMessage = async (chatSessionId, userMessageContent) => {
   return { status: response.status, ok: response.ok }; 
 };
 
+// Create new text-only chat with streaming response
+export const createTextChatWithStream = async (userMessageContent, signal, llmId = '1') => {
+  console.log('Creating text chat with streaming response, LLM ID:', llmId);
+  
+  // Use the text-only chat creation endpoint that streams the response
+  const response = await fetch(`${getBackendUrl()}/chat-stream`, {
+    method: 'POST',
+    headers: getAuthHeadersWithContentType('text/plain'),
+    body: userMessageContent,
+    signal,
+  });
+
+  console.log('Text chat creation response status:', response.status);
+  console.log('Text chat creation response headers:', Object.fromEntries(response.headers.entries()));
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
+  }
+  return response; // Return the raw response for stream processing
+};
+
+// Stream message in existing text chat
+export const streamTextChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => {
+  console.log('Streaming text response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
+  
+  // Use the existing chat streaming endpoint
+  const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/message/stream`, {
+    method: 'POST',
+    headers: getAuthHeadersWithContentType('text/plain'),
+    body: userMessageContent,
+    signal,
+  });
+
+  console.log('Text stream response status:', response.status);
+  console.log('Text stream response headers:', Object.fromEntries(response.headers.entries()));
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
+  }
+  return response; // Return the raw response for stream processing
+};
+
 export const streamChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => { // Added signal parameter and llmId
   // Create a FormData object for multipart/form-data
   const formData = new FormData();
@@ -100,8 +144,7 @@ export const streamChatResponse = async (chatSessionId, userMessageContent, sign
   if (chatSessionId) {
     formData.append('chatId', chatSessionId);
   }
-  
-  console.log('Streaming multimodal response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
+    console.log('Streaming multimodal response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
   console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => [key, typeof value === 'object' ? `${value.constructor.name}(${value.size || value.length || 'unknown'})` : value]));
   
   // Use the correct multimodal streaming endpoint
@@ -178,12 +221,12 @@ export const streamMultimodalMessage = async (chatId, textContent, file, signal,
   if (textContent && textContent.trim()) {
     formData.append('prompt', textContent);
   }
-  
-  formData.append('llmId', llmId);
+    formData.append('llmId', llmId);
+  formData.append('chatId', chatId);
   
   console.log('Streaming multimodal message to existing chat:', chatId, 'with LLM ID:', llmId);
   
-  const response = await fetch(`${getBackendUrl()}/chats/${chatId}/message/stream-multimodal`, {
+  const response = await fetch(`${getBackendUrl()}/chat-stream-multimodal`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
