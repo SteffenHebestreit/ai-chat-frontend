@@ -1,5 +1,18 @@
 import { getBackendUrl } from '../config/apiConfig';
 
+// Helper function to convert a file to ByteData (ArrayBuffer)
+// Returns a Promise that resolves with the file's raw binary data
+const fileToByteData = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsArrayBuffer(file);
+    reader.onload = () => {
+      resolve(reader.result);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 const getAuthHeaders = () => ({
   'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
   'Content-Type': 'application/json'
@@ -60,8 +73,9 @@ export const saveUserMessage = async (chatSessionId, userMessageContent) => {
 export const createTextChatWithStream = async (userMessageContent, signal, llmId = '1') => {
   console.log('Creating text chat with streaming response, LLM ID:', llmId);
   
-  // Use the text-only chat creation endpoint that streams the response
-  const response = await fetch(`${getBackendUrl()}/chat-stream`, {
+  // Use the text-only chat creation endpoint that streams the response with llmId as query parameter
+  const url = `${getBackendUrl()}/chat-stream?llmId=${encodeURIComponent(llmId)}`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: getAuthHeadersWithContentType('text/plain'),
     body: userMessageContent,
@@ -82,8 +96,9 @@ export const createTextChatWithStream = async (userMessageContent, signal, llmId
 export const streamTextChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => {
   console.log('Streaming text response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
   
-  // Use the existing chat streaming endpoint
-  const response = await fetch(`${getBackendUrl()}/chats/${chatSessionId}/message/stream`, {
+  // Use the existing chat streaming endpoint with llmId as query parameter
+  const url = `${getBackendUrl()}/chats/${chatSessionId}/message/stream?llmId=${encodeURIComponent(llmId)}`;
+  const response = await fetch(url, {
     method: 'POST',
     headers: getAuthHeadersWithContentType('text/plain'),
     body: userMessageContent,
@@ -100,95 +115,45 @@ export const streamTextChatResponse = async (chatSessionId, userMessageContent, 
   return response; // Return the raw response for stream processing
 };
 
-export const streamChatResponse = async (chatSessionId, userMessageContent, signal, llmId = '1') => { // Added signal parameter and llmId
-  // Create a FormData object for multipart/form-data
-  const formData = new FormData();
-  
-  // If we have a file in the message data, add it to the form
-  if (userMessageContent.content && Array.isArray(userMessageContent.content)) {
-    // Find the file content (if any)
-    const fileContent = userMessageContent.content.find(item => 
-      item.type === 'image_url' || item.type === 'file_url');
-    
-    // Find the text content (if any)
-    const textContent = userMessageContent.content.find(item => item.type === 'text');
-    
-    if (fileContent) {
-      // Get the data URI
-      const dataUri = fileContent.file_url?.url || fileContent.image_url?.url;
-      if (dataUri) {
-        // Convert data URI to Blob
-        const byteString = atob(dataUri.split(',')[1]);
-        const mimeType = dataUri.split(',')[0].split(':')[1].split(';')[0];
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) {
-          ia[i] = byteString.charCodeAt(i);
-        }
-        const blob = new Blob([ab], { type: mimeType });
-        
-        // Add the file to the form data
-        formData.append('file', blob, 'attachment.' + mimeType.split('/')[1]);
-      }
-    }
-    
-    // Add text content if present
-    if (textContent && textContent.text) {
-      formData.append('prompt', textContent.text);
-    }
-  }
-  // Add the llmId parameter as required by the backend
-  formData.append('llmId', llmId);
-  
-  // Add the chatId parameter to ensure the right chat is selected
-  if (chatSessionId) {
-    formData.append('chatId', chatSessionId);
-  }
-    console.log('Streaming multimodal response with LLM ID:', llmId, 'and Chat ID:', chatSessionId);
-  console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => [key, typeof value === 'object' ? `${value.constructor.name}(${value.size || value.length || 'unknown'})` : value]));
-  
-  // Use the correct multimodal streaming endpoint
-  const response = await fetch(`${getBackendUrl()}/chat-stream-multimodal`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-      // Let the browser set the correct Content-Type with boundary for FormData
-    },
-    body: formData,
-    signal,
-  });
-
-  console.log('Multimodal stream response status:', response.status);
-  console.log('Multimodal stream response headers:', Object.fromEntries(response.headers.entries()));
-  console.log('Multimodal stream response body exists:', !!response.body);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status} - ${errorText || 'No error message'}`);
-  }
-  return response; // Return the raw response for stream processing
-};
-
 // New function to create multimodal chat with streaming response
+// Sends files as ByteData with type information via FormData
+// Uses the following format:
+// - file: ByteData (ArrayBuffer) of the file content
+// - fileName: String with the file name
+// - fileType: String with the file type (e.g., "application/pdf")
+// - fileSize: Number representing the file size
+// - prompt: String with the text prompt for the LLM
 export const createMultimodalChatWithStream = async (textContent, file, signal, llmId = '1') => {
   // Create a FormData object for multipart/form-data
   const formData = new FormData();
-  
-  // Add the file directly (no conversion needed)
+  // Add the file as raw binary data
   if (file) {
-    formData.append('file', file);
+    try {
+      // Convert file to ByteData (ArrayBuffer)
+      const byteData = await fileToByteData(file);
+      // Create a Blob from the ArrayBuffer
+      const blob = new Blob([byteData], { type: file.type });
+      formData.append('file', blob, file.name);
+      formData.append('fileName', file.name);
+      formData.append('fileType', file.type);
+      formData.append('fileSize', file.size.toString());
+    } catch (error) {
+      console.error('Error converting file to ByteData:', error);
+      throw new Error('Failed to convert file to ByteData');
+    }
   }
-  
-  // Add text content if present
+    // Add text content if present
   if (textContent && textContent.trim()) {
     formData.append('prompt', textContent);
   }
   
   // Add the llmId parameter
   formData.append('llmId', llmId);
-  
   console.log('Creating multimodal chat with LLM ID:', llmId);
-  console.log('FormData entries:', Array.from(formData.entries()).map(([key, value]) => [key, typeof value === 'object' ? `${value.constructor.name}(${value.size || value.length || 'unknown'})` : value]));
+  console.log('File info (ByteData):', file ? `${file.name} (${file.type}, ${file.size} bytes)` : 'No file');
+  console.log('FormData entries:', Array.from(formData.entries())
+    .filter(([key]) => key !== 'file') // Don't log the entire file binary data
+    .map(([key, value]) => [key, value]));
     // Use the new create multimodal chat endpoint with streaming
   const response = await fetch(`${getBackendUrl()}/create-stream-multimodal-chat`, {
     method: 'POST',
@@ -211,20 +176,42 @@ export const createMultimodalChatWithStream = async (textContent, file, signal, 
   return response; // Return the raw response for stream processing
 };
 
+// Send multimodal message to an existing chat with streaming response
+// Sends files as ByteData with type information via FormData
+// Uses the following format:
+// - file: ByteData (ArrayBuffer) of the file content
+// - fileName: String with the file name
+// - fileType: String with the file type (e.g., "application/pdf")
+// - fileSize: Number representing the file size
+// - prompt: String with the text prompt for the LLM
+// - chatId: ID of the existing chat
+// - llmId: ID of the language model to use
 export const streamMultimodalMessage = async (chatId, textContent, file, signal, llmId = '1') => {
   const formData = new FormData();
-  
+    // Add the file as raw binary data
   if (file) {
-    formData.append('file', file);
+    try {
+      // Convert file to ByteData (ArrayBuffer)
+      const byteData = await fileToByteData(file);
+      // Create a Blob from the ArrayBuffer
+      const blob = new Blob([byteData], { type: file.type });
+      formData.append('file', blob, file.name);
+      formData.append('fileName', file.name);
+      formData.append('fileType', file.type);
+      formData.append('fileSize', file.size.toString());
+    } catch (error) {
+      console.error('Error converting file to ByteData:', error);
+      throw new Error('Failed to convert file to ByteData');
+    }
   }
-  
-  if (textContent && textContent.trim()) {
+    if (textContent && textContent.trim()) {
     formData.append('prompt', textContent);
   }
-    formData.append('llmId', llmId);
-  formData.append('chatId', chatId);
   
+  formData.append('llmId', llmId);
+  formData.append('chatId', chatId);
   console.log('Streaming multimodal message to existing chat:', chatId, 'with LLM ID:', llmId);
+  console.log('File info (ByteData):', file ? `${file.name} (${file.type}, ${file.size} bytes)` : 'No file');
   
   const response = await fetch(`${getBackendUrl()}/chat-stream-multimodal`, {
     method: 'POST',

@@ -7,7 +7,6 @@ import UserInput from './components/UserInput';
 import ModelSelector from './components/ModelSelector';
 import {
   createNewChat,
-  streamChatResponse,
   streamTextChatResponse,
   fetchChatDetails,
   deleteChat as apiDeleteChat,
@@ -149,61 +148,30 @@ function App() {
     let userMessageDisplayContent = userMessageContent;
     let fileAttachment = null;
     const userMessageId = `user-${Date.now()}`; // Generate ID once
-
+    
     if (selectedFile) {
-      // Handle text files differently - read their content and include in message
-      if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md')) {
-        // Read text file content
+      // Handle ALL files the same way - as attachments
+      const fileType = selectedFile.type.startsWith('image/') ? 'image' : 'document';
+      userMessageDisplayContent = userMessageContent
+        ? `${userMessageContent}\n[Attached ${fileType}: ${selectedFile.name}]`
+        : `[Attached ${fileType}: ${selectedFile.name}]`;
+      
+      // Set file attachment immediately
+      fileAttachment = { file: selectedFile };
+      
+      // Create preview URL for the file if it's an image
+      if (selectedFile.type.startsWith('image/')) {
         const reader = new FileReader();
-        reader.onload = async (e) => {
-          const fileContent = e.target.result;
-          const combinedContent = userMessageContent 
-            ? `${userMessageContent}\n\n--- Content from ${selectedFile.name} ---\n${fileContent}`
-            : `--- Content from ${selectedFile.name} ---\n${fileContent}`;
-          
-          // Update the user message with file content
+        reader.onload = (e) => {
+          const previewUrl = e.target.result;
           setMessages(prevMessages => 
             prevMessages.map(msg => 
               msg.id === userMessageId 
-                ? { ...msg, content: combinedContent }
+                ? { ...msg, fileAttachment: { file: selectedFile, previewUrl } }
                 : msg
             )
           );
-          
-          // Proceed with sending the message with text content
-          await sendTextMessage(combinedContent, userMessageId);
-        };
-        reader.readAsText(selectedFile);
-        
-        // For display purposes, show that file is being processed
-        userMessageDisplayContent = userMessageContent
-          ? `${userMessageContent}\n[Processing text file: ${selectedFile.name}]`
-          : `[Processing text file: ${selectedFile.name}]`;
-      } else {
-        // Handle image/PDF files as before
-        const fileType = selectedFile.type.startsWith('image/') ? 'image' : 'document';
-        userMessageDisplayContent = userMessageContent
-          ? `${userMessageContent}\n[Attached ${fileType}: ${selectedFile.name}]`
-          : `[Attached ${fileType}: ${selectedFile.name}]`;
-        
-        // Set file attachment immediately
-        fileAttachment = { file: selectedFile };
-        
-        // Create preview URL for the file if it's an image
-        if (selectedFile.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const previewUrl = e.target.result;
-            setMessages(prevMessages => 
-              prevMessages.map(msg => 
-                msg.id === userMessageId 
-                  ? { ...msg, fileAttachment: { file: selectedFile, previewUrl } }
-                  : msg
-              )
-            );
-          };
-          reader.readAsDataURL(selectedFile);
-        }
+        };        reader.readAsDataURL(selectedFile);
       }
     }
     
@@ -214,31 +182,26 @@ function App() {
       timestamp: new Date().toISOString(),
       fileAttachment // This will be updated asynchronously for images with previewUrl
     };
+    
     setMessages(prevMessages => [...prevMessages, userMessage]);
-    
-    // For text files, the sendTextMessage function is called asynchronously from the FileReader
-    // For other files or no files, continue with the current flow
-    const isTextFile = selectedFile && (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.md'));
-    
-    if (!selectedFile || !isTextFile) {
-      // Handle regular text messages or multimodal (image/PDF) messages
-      if (!selectedFile) {
-        // Pure text message - use text-only flow
-        await sendTextMessage(userMessageContent, userMessageId);
-      } else {
-        // Multimodal message flow for images/PDFs
-        let chatSessionId = currentChatId;
 
-        if (!chatSessionId) {
-          // For new chats, use the new create multimodal chat endpoint with streaming
-          await handleNewMultimodalChatWithStream(userMessageContent, selectedFile, userMessageId);
-        } else {
-          // For existing chats, use streaming endpoint
-          await handleMultimodalStream(chatSessionId, userMessageContent, selectedFile, userMessageId);
-        }
+    // Handle ALL files the same way - as multimodal attachments
+    if (!selectedFile) {
+      // Pure text message - use text-only flow
+      await sendTextMessage(userMessageContent, userMessageId);
+    } else {
+      // Multimodal message flow for ALL file types
+      let chatSessionId = currentChatId;
+
+      if (!chatSessionId) {        // For new chats, use the new create multimodal chat endpoint with streaming
+        await handleNewMultimodalChatWithStream(userMessageContent, selectedFile, userMessageId);
+      } else {
+        // For existing chats, use streaming endpoint
+        await handleMultimodalStream(chatSessionId, userMessageContent, selectedFile, userMessageId);
       }
     }
-      // Clear input and file after sending
+
+    // Clear input and file after sending
     setInputText('');
     setSelectedFile(null);
   }, [inputText, selectedFile, isLoading, abortController, currentChatId, selectedModelId, selectedModel, llmCapabilities, handleStopGeneration]);
@@ -320,9 +283,10 @@ function App() {
     } finally {
       setIsLoading(false);
       setIsTyping(false); // Ensure typing is false after loading completes
-    }
-  }, [isPanelOpen, toggleChatHistory]);  // Helper function to send text-only messages
-  const sendTextMessage = async (messageContent, userMessageId) => {
+    }  }, [isPanelOpen, toggleChatHistory]);
+
+  // Helper function to send text-only messages
+  const sendTextMessage = useCallback(async (messageContent, userMessageId) => {
     try {
       let chatSessionId = currentChatId;
       let isNewChat = false;
@@ -363,11 +327,9 @@ function App() {
         rawContent: '', // Initialize rawContent for tool call processing
         timestamp: new Date().toISOString() 
       };
-      setMessages(prevMessages => [...prevMessages, aiMessage]);
-
-      // Log the model being used for debugging
-      const modelId = selectedModel?.id || selectedModelId || '1';
-      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel, 'chatId:', chatSessionId);
+      setMessages(prevMessages => [...prevMessages, aiMessage]);      // Log the model being used for debugging
+      const modelId = getCurrentModelId();
+      console.log('Sending text message with model ID:', modelId, 'selectedModel:', selectedModel, 'selectedModelId:', selectedModelId, 'chatId:', chatSessionId);
 
       // Stream the response using the existing chat streaming endpoint
       const response = await streamTextChatResponse(
@@ -437,14 +399,14 @@ function App() {
         }]);
         setOrbAiState('criticalError');
       }
-    } finally {
-      setIsLoading(false);
+    } finally {      setIsLoading(false);
       setIsTyping(false);
       setAbortController(null);
     }
-  };
+  }, [currentChatId, selectedModel, selectedModelId, abortController]);
+
   // Helper function to handle multimodal streaming
-  const handleMultimodalStream = async (chatSessionId, textContent, file, userMessageId) => {
+  const handleMultimodalStream = useCallback(async (chatSessionId, textContent, file, userMessageId) => {
     const aiMessageId = `agent-${Date.now()}`;
     setMessages(prevMessages => [...prevMessages, { 
       id: aiMessageId, 
@@ -465,58 +427,31 @@ function App() {
 
     const controller = new AbortController();
     setAbortController(controller);
-    
-    try {
+      try {
       // Determine which model to use for multimodal content
-      let defaultLlmId = selectedModelId || '1';
-      
-      // Log the model being used for debugging
-      console.log('Starting multimodal stream with initial model ID:', defaultLlmId, 'selectedModel:', selectedModel);
-      
-      // Check if selected model supports the file type
+      let defaultLlmId = getCurrentModelId();
+        // Log the model being used for debugging
+      console.log('Starting multimodal stream with model ID:', defaultLlmId, 'selectedModel:', selectedModel, 'selectedModelId:', selectedModelId);
+      console.log('getCurrentModelId() returns:', getCurrentModelId());
+        // Check if selected model supports the file type
       if (selectedModelId && selectedModel && file) {
         const fileType = file.type.startsWith('image/') ? 'image' : 
-                        (file.type === 'application/pdf' ? 'pdf' : 'unknown');
+                        (file.type === 'application/pdf' ? 'pdf' : 
+                        (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md') ? 'text' : 'document'));
         
         const selectedSupportsFile = (fileType === 'image' && (selectedModel.supportsImage || selectedModel.capabilities?.image)) ||
-                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf));
-        
-        if (!selectedSupportsFile && llmCapabilities.length > 0) {
-          // Find an LLM that supports the file type
-          const capableLlm = llmCapabilities.find(llm => {
-            if (fileType === 'image') {
-              return llm.supportsImage || llm.capabilities?.image || 
-                     (llm.supportedTypes && llm.supportedTypes.includes('image'));
-            }
-            if (fileType === 'pdf') {
-              return llm.supportsPdf || llm.capabilities?.pdf ||
-                     (llm.supportedTypes && llm.supportedTypes.includes('pdf'));
-            }
-            return false;
-          });
-          
-          if (capableLlm) {
-            defaultLlmId = capableLlm.id || capableLlm.llmId || '1';
-            console.warn(`Selected model doesn't support ${fileType}, using ${capableLlm.name || defaultLlmId} instead`);
-          }
+                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf)) ||
+                                   (fileType === 'text' && (selectedModel.supportsText || selectedModel.capabilities?.text)) ||
+                                   (fileType === 'document' && (selectedModel.supportsDocument || selectedModel.capabilities?.document));
+          if (!selectedSupportsFile && llmCapabilities.length > 0) {
+          console.warn(`Selected model (${selectedModel.name || defaultLlmId}) may not support ${fileType} files, but proceeding with user's choice.`);
+          // Removed automatic fallback - trust user's model selection
         }
       } else if (llmCapabilities.length > 0) {
-        // No model selected, find an appropriate one
-        const imageCapableLlm = llmCapabilities.find(llm => 
-          llm.supportsImage || llm.capabilities?.image || 
-          (llm.supportedTypes && llm.supportedTypes.includes('image'))
-        );
-        
-        if (imageCapableLlm) {
-          defaultLlmId = imageCapableLlm.id || imageCapableLlm.llmId || '1';
-        } else {
-          // Fall back to the first available LLM
-          const firstLlm = llmCapabilities[0];
-          defaultLlmId = firstLlm.id || firstLlm.llmId || '1';
-        }
-      }
-
-      console.log('Final model ID for multimodal stream:', defaultLlmId);
+        console.log('No specific model selected, using getCurrentModelId():', defaultLlmId);
+      }// OVERRIDE: Force using user's selected model (disable fallback logic for debugging)
+      console.log('FORCING MODEL SELECTION - Using defaultLlmId:', defaultLlmId);
+      // Skip all capability checking and fallback logic for now
 
       const response = await streamMultimodalMessage(chatSessionId, textContent, file, controller.signal, defaultLlmId);
 
@@ -575,12 +510,12 @@ function App() {
         );
         setOrbAiState('criticalError');
       }
-    } finally {
-      setIsLoading(false);
+    } finally {      setIsLoading(false);
       setIsTyping(false);
       setAbortController(null);    }
-  };  // Helper function to handle new multimodal chat creation with streaming
-  const handleNewMultimodalChatWithStream = async (textContent, file, userMessageId) => {
+  }, [selectedModel, selectedModelId, llmCapabilities, abortController]);
+  // Helper function to handle new multimodal chat creation with streaming
+  const handleNewMultimodalChatWithStream = useCallback(async (textContent, file, userMessageId) => {
     const aiMessageId = `agent-${Date.now()}`;
     setMessages(prevMessages => [...prevMessages, { 
       id: aiMessageId, 
@@ -592,59 +527,36 @@ function App() {
 
     const controller = new AbortController();
     setAbortController(controller);
-    
-    try {
+      try {
       // Determine which model to use for multimodal content
-      let defaultLlmId = selectedModelId || '1';
+      let defaultLlmId = getCurrentModelId();
       
-      // Log the model being used for debugging      console.log('Creating new multimodal chat with model ID:', defaultLlmId, 'selectedModel:', selectedModel);
+      // Log the model being used for debugging
+      console.log('Creating new multimodal chat with model ID:', defaultLlmId, 'selectedModel:', selectedModel, 'selectedModelId:', selectedModelId);
+      console.log('getCurrentModelId() returns:', getCurrentModelId());
       
       // Check if selected model supports the file type
       if (selectedModelId && selectedModel && file) {
         const fileType = file.type.startsWith('image/') ? 'image' : 
-                        (file.type === 'application/pdf' ? 'pdf' : 'unknown');
+                        (file.type === 'application/pdf' ? 'pdf' : 
+                        (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md') ? 'text' : 'document'));
         
         const selectedSupportsFile = (fileType === 'image' && (selectedModel.supportsImage || selectedModel.capabilities?.image)) ||
-                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf));
-        
-        if (!selectedSupportsFile && llmCapabilities.length > 0) {
-          // Find an LLM that supports the file type
-          const capableLlm = llmCapabilities.find(llm => {
-            if (fileType === 'image') {
-              return llm.supportsImage || llm.capabilities?.image || 
-                     (llm.supportedTypes && llm.supportedTypes.includes('image'));
-            }
-            if (fileType === 'pdf') {
-              return llm.supportsPdf || llm.capabilities?.pdf ||
-                     (llm.supportedTypes && llm.supportedTypes.includes('pdf'));
-            }
-            return false;
-          });
-          
-          if (capableLlm) {
-            defaultLlmId = capableLlm.id || capableLlm.llmId || '1';
-            console.warn(`Selected model doesn't support ${fileType}, using ${capableLlm.name || defaultLlmId} instead`);
-          }
+                                   (fileType === 'pdf' && (selectedModel.supportsPdf || selectedModel.capabilities?.pdf)) ||
+                                   (fileType === 'text' && (selectedModel.supportsText || selectedModel.capabilities?.text)) ||
+                                   (fileType === 'document' && (selectedModel.supportsDocument || selectedModel.capabilities?.document));
+          if (!selectedSupportsFile && llmCapabilities.length > 0) {
+          console.warn(`Selected model (${selectedModel.name || defaultLlmId}) may not support ${fileType} files, but proceeding with user's choice.`);
+          // Removed automatic fallback - trust user's model selection
         }
       } else if (llmCapabilities.length > 0) {
-        // No model selected, find an appropriate one
-        const imageCapableLlm = llmCapabilities.find(llm => 
-          llm.supportsImage || llm.capabilities?.image || 
-          (llm.supportedTypes && llm.supportedTypes.includes('image'))
-        );
-        
-        if (imageCapableLlm) {
-          defaultLlmId = imageCapableLlm.id || imageCapableLlm.llmId || '1';
-        } else {
-          // Fall back to the first available LLM
-          const firstLlm = llmCapabilities[0];
-          defaultLlmId = firstLlm.id || firstLlm.llmId || '1';
-        }
+        console.log('No specific model selected, using getCurrentModelId():', defaultLlmId);
       }
 
       console.log('Final model ID for new multimodal chat:', defaultLlmId);
+      // Skip all capability checking and fallback logic for now
 
-      const response = await createMultimodalChatWithStream(textContent, file, controller.signal, defaultLlmId);      if (!response.body) {
+      const response = await createMultimodalChatWithStream(textContent, file, controller.signal, defaultLlmId);if (!response.body) {
         console.error('No response body for multimodal chat creation. Response:', response);
         const errorMessage = response.status ? `HTTP ${response.status}: ${response.statusText}` : 'Unknown error';
         setMessages(prevMessages => 
@@ -716,11 +628,34 @@ function App() {
         );
         setOrbAiState('criticalError');
       }
-    } finally {
-      setIsLoading(false);
+    } finally {      setIsLoading(false);
       setIsTyping(false);
       setAbortController(null);
     }
+  }, [selectedModel, selectedModelId, llmCapabilities, currentChatId, setCurrentChatId, setSelectedChatId, setRefreshHistoryKey]);
+  
+  // Helper function to consistently get model ID from a model object
+  const getModelId = (model) => {
+    if (!model) return null;
+    // Different backends might use different field names for model ID
+    return model.id || model.llmId || model.modelId || model.model_id || null;
+  };
+  // Helper function to get the current selected model ID
+  const getCurrentModelId = () => {
+    // Debug logging to track state
+    console.log('getCurrentModelId - selectedModel:', selectedModel, 'selectedModelId:', selectedModelId);
+    
+    if (selectedModel) {
+      const modelId = getModelId(selectedModel);
+      if (modelId) {
+        console.log('Using model ID from selectedModel:', modelId);
+        return modelId;
+      }
+    }
+    
+    const fallbackId = selectedModelId || '1';
+    console.log('Using fallback model ID:', fallbackId);
+    return fallbackId;
   };
 
   return (
