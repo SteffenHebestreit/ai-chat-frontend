@@ -37,6 +37,18 @@ function FileUpload({ onFileSelect, acceptedFileTypes, disabled, selectedFile })
         return file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt');
       } else if (acceptedType === '.md') {
         return file.name.toLowerCase().endsWith('.md');
+      } else if (acceptedType === '.csv') {
+        return file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+      } else if (acceptedType === '.json') {
+        return file.type === 'application/json' || file.name.toLowerCase().endsWith('.json');
+      } else if (acceptedType === '.xml') {
+        return file.type === 'text/xml' || file.type === 'application/xml' || file.name.toLowerCase().endsWith('.xml');
+      } else if (acceptedType === '.log') {
+        return file.name.toLowerCase().endsWith('.log');
+      } else if (acceptedType === '.code') {
+        // Support common code file extensions
+        const codeExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go', '.rs', '.swift'];
+        return codeExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
       } else if (acceptedType.startsWith('.')) {
         // Handle other extensions
         return file.name.toLowerCase().endsWith(acceptedType.toLowerCase());
@@ -131,14 +143,30 @@ function FileUpload({ onFileSelect, acceptedFileTypes, disabled, selectedFile })
       handleFile(e.target.files[0]);
     }
   };  const handleFile = (file) => {
-    // Validate file type against accepted types
-    if (!isFileTypeAccepted(file)) {
-      alert(`File type "${file.type}" is not supported. Please select ${getDetailedFileTypesDescription()}.`);
-      // Reset the input
-      if (inputRef.current) {
-        inputRef.current.value = '';
+    // Check if file type is in accepted types, but allow all files with warnings
+    const isAccepted = isFileTypeAccepted(file);
+    
+    if (!isAccepted) {
+      const proceed = confirm(`⚠️ File Type Notice: "${file.name}"\n\nThis file type (${file.type || 'unknown'}) may not be fully supported by all AI models, but you can still try uploading it.\n\n✅ Continue anyway?\n❌ Cancel and select a different file?`);
+      if (!proceed) {
+        // Reset the input if user cancels
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+        return;
       }
-      return;
+    }
+    
+    // Show warning for text/markdown files but allow them to proceed
+    if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+      const proceed = confirm(`📄 Text File Detected: "${file.name}"\n\nThis will be sent as a file attachment to the AI model. The AI will read and analyze the file contents.\n\n✅ Continue with file attachment?\n❌ Cancel to paste text directly instead?`);
+      if (!proceed) {
+        // Reset the input if user cancels
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+        return;
+      }
     }
     
     // Store file info
@@ -156,9 +184,12 @@ function FileUpload({ onFileSelect, acceptedFileTypes, disabled, selectedFile })
     } else if (file.type === 'application/pdf') {
       // For PDFs, just show the file name
       setPreviewUrl(null);
-      setShowPreview(true);
-    } else if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+      setShowPreview(true);    } else if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
       // For text files, just show the file name
+      setPreviewUrl(null);
+      setShowPreview(true);
+    } else {
+      // For any other file type, show generic file icon
       setPreviewUrl(null);
       setShowPreview(true);
     }
