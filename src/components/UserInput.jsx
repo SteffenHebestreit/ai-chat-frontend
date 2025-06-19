@@ -40,25 +40,11 @@ function UserInput({
     }
     
     return tooltip;
-  };// Generate accepted file types based on selected model capabilities
+  };  // Generate accepted file types based on selected model capabilities
   const getAcceptedFileTypes = () => {
-    if (!selectedModel) return ".txt,.md,image/*,.pdf";
-    
-    const supportsImage = selectedModel.supportsImage || selectedModel.capabilities?.image;
-    const supportsPdf = selectedModel.supportsPdf || selectedModel.capabilities?.pdf;
-    
-    // Always include text files since all models support text
-    let acceptedTypes = ".txt,.md";
-    
-    if (supportsImage) {
-      acceptedTypes += ",image/*";
-    }
-    
-    if (supportsPdf) {
-      acceptedTypes += ",.pdf";
-    }
-    
-    return acceptedTypes;
+    // Allow common file types regardless of model capabilities
+    // The FileUpload component will show warnings for unsupported types
+    return ".txt,.md,.csv,.json,.xml,.log,.js,.jsx,.ts,.tsx,.py,.java,.cpp,.c,.cs,.php,.rb,.go,.rs,.swift,image/*,.pdf";
   };
   
   // Should show file upload button only if the selected model supports files

@@ -239,10 +239,9 @@ Enhanced API service layer with comprehensive model and multimodal support.
 *   **Functions**:
     *   **Model Management**: `fetchLlmCapabilitiesWithOverrides()` - Retrieves available models and their capabilities, applying any user-defined overrides.
     *   **Chat Management**: `createNewChat`, `fetchChatHistory`, `fetchChatDetails`, `deleteChat`.
-    *   **Messaging**: `saveUserMessage`, `saveAgentResponse`.
-    *   **Streaming**: 
-        *   `streamChatResponse()`: Handles text-only conversations.
-        *   `createMultimodalChatWithStream()`: Creates a new chat and streams the response for messages that include files.
+    *   **Messaging**: `saveUserMessage`, `saveAgentResponse`.    *   **Streaming**: 
+        *   `streamTextChatResponse()`: Handles text-only conversations in existing chats.
+        *   `createMultimodalChatWithStream()`: Creates a new chat and streams the response for messages that include files. Files are sent as raw binary data (ByteData) with metadata.
 
 ### `config/apiConfig.js`
 Provides configuration for the backend API URL.
