@@ -183,12 +183,12 @@ function App() {
       fileAttachment // This will be updated asynchronously for images with previewUrl
     };
     
-    setMessages(prevMessages => [...prevMessages, userMessage]);
-
-    // Handle ALL files the same way - as multimodal attachments
+    setMessages(prevMessages => [...prevMessages, userMessage]);    // Handle ALL files the same way - as multimodal attachments
     if (!selectedFile) {
       // Pure text message - use text-only flow
       await sendTextMessage(userMessageContent, userMessageId);
+      // Clear input after successful text message
+      setInputText('');
     } else {
       // Multimodal message flow for ALL file types
       let chatSessionId = currentChatId;
@@ -199,11 +199,10 @@ function App() {
         // For existing chats, use streaming endpoint
         await handleMultimodalStream(chatSessionId, userMessageContent, selectedFile, userMessageId);
       }
+      // Clear input and file after successful multimodal message
+      setInputText('');
+      setSelectedFile(null);
     }
-
-    // Clear input and file after sending
-    setInputText('');
-    setSelectedFile(null);
   }, [inputText, selectedFile, isLoading, abortController, currentChatId, selectedModelId, selectedModel, llmCapabilities, handleStopGeneration]);
 
   const handleKeyDown = useCallback((event) => {
